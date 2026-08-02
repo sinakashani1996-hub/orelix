@@ -174,6 +174,7 @@ export function Dashboard({
   const [quoteSavedSnapshot, setQuoteSavedSnapshot] = useState("");
   const [quoteBuilderOpen, setQuoteBuilderOpen] = useState(false);
   const [busy, setBusy] = useState(false);
+  const gmailNeedsReconnect = integration?.status === "needs_reconnect";
 
   const loadWorkspace = useCallback(async () => {
     setSyncing(true);
@@ -764,23 +765,33 @@ export function Dashboard({
             </div>
             <div className="mail-status-wrap">
               <a
-                className={`mail-status ${integration ? "connected" : "disconnected"}`}
-                href={integration ? "#instellingen" : "/api/integrations/gmail/start"}
+                className={`mail-status ${integration && !gmailNeedsReconnect ? "connected" : "disconnected"}`}
+                href={
+                  integration && !gmailNeedsReconnect
+                    ? "#instellingen"
+                    : "/api/integrations/gmail/start"
+                }
               >
                 <span className="gmail-mark">M</span>
                 <span>
                   <strong>
-                    {integration ? "Gmail verbonden" : "Gmail koppelen"}
+                    {gmailNeedsReconnect
+                      ? "Gmail opnieuw verbinden"
+                      : integration
+                        ? "Gmail verbonden"
+                        : "Gmail koppelen"}
                   </strong>
                   <small>
-                    {integration
+                    {gmailNeedsReconnect
+                      ? "Toegang verlopen — klik om te herstellen"
+                      : integration
                       ? integration.accountEmail
                       : "Ontvang echte aanvragen in Orelix"}
                   </small>
                 </span>
-                {integration ? <CheckCircle2 size={18} /> : <ArrowRight size={18} />}
+                {integration && !gmailNeedsReconnect ? <CheckCircle2 size={18} /> : <ArrowRight size={18} />}
               </a>
-              {integration && (
+              {integration && !gmailNeedsReconnect && (
                 <button
                   type="button"
                   className="secondary-button sync-inbox-button"

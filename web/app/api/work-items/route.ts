@@ -85,10 +85,12 @@ export async function GET() {
     integrationForOrganization(context.organization.id),
   ]);
   let activeGmail = gmail;
+  let gmailNeedsReconnect = false;
   if (gmail) {
     try {
       activeGmail = await ensureGmailWatch(gmail);
     } catch (caught) {
+      gmailNeedsReconnect = true;
       const message =
         caught instanceof Error ? caught.message : "Unknown Gmail watch error";
       console.error("Gmail watch renewal failed:", message);
@@ -164,7 +166,7 @@ export async function GET() {
     integration: activeGmail
       ? {
           provider: "gmail",
-          status: activeGmail.status,
+          status: gmailNeedsReconnect ? "needs_reconnect" : activeGmail.status,
           accountEmail: activeGmail.accountEmail,
           watchExpiration: activeGmail.watchExpiration,
           updatedAt: activeGmail.updatedAt,
