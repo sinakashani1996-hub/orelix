@@ -1,0 +1,1 @@
+CREATE UNIQUE INDEX `integrations_provider_account_idx` ON `integrations` (`provider`,`account_email`);

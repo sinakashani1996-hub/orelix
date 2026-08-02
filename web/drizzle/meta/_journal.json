@@ -1,0 +1,55 @@
+{
+  "version": "7",
+  "dialect": "sqlite",
+  "entries": [
+    {
+      "idx": 0,
+      "version": "6",
+      "when": 1784801879992,
+      "tag": "0000_calm_the_initiative",
+      "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "6",
+      "when": 1784804106673,
+      "tag": "0001_goofy_queen_noir",
+      "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "6",
+      "when": 1784804343942,
+      "tag": "0002_rapid_energizer",
+      "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "6",
+      "when": 1784817557668,
+      "tag": "0003_cleanup_demo_gmail",
+      "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "6",
+      "when": 1784829150000,
+      "tag": "0004_cleanup_test_gmail",
+      "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "6",
+      "when": 1784838997731,
+      "tag": "0005_ordinary_silver_surfer",
+      "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "6",
+      "when": 1784842216914,
+      "tag": "0006_new_komodo",
+      "breakpoints": true
+    }
+  ]
+}

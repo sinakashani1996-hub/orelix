@@ -1,0 +1,1 @@
+ALTER TABLE `work_items` ADD `source_body` text DEFAULT '' NOT NULL;
