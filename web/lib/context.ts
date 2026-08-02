@@ -28,6 +28,11 @@ export async function getAppContext(): Promise<AppContext | null> {
 
   if (user.provider !== "workos") {
     await ensureDemoWorkspace(user);
+  } else if (user.providerOrganizationId) {
+    // WorkOS has already verified this user's organization membership in the
+    // session. Mirror it locally on first sign-in so invited teammates gain
+    // access without an administrator having to edit D1 by hand.
+    await ensureWorkOSWorkspaceMembership(user);
   }
 
   const db = getDb();
@@ -56,6 +61,36 @@ export async function getAppContext(): Promise<AppContext | null> {
     },
     role: membership[0].role,
   };
+}
+
+async function ensureWorkOSWorkspaceMembership(user: OrelixUser) {
+  if (!user.providerOrganizationId) return;
+  const db = getDb();
+  const organization = await db
+    .select({ id: organizations.id })
+    .from(organizations)
+    .where(eq(organizations.authProviderOrganizationId, user.providerOrganizationId))
+    .limit(1);
+  if (!organization[0]) return;
+
+  await db
+    .insert(members)
+    .values({
+      id: `member_${crypto.randomUUID()}`,
+      organizationId: organization[0].id,
+      authUserId: user.id,
+      email: user.email,
+      name: user.name,
+      role: user.role === "admin" ? "admin" : "member",
+    })
+    .onConflictDoUpdate({
+      target: [members.organizationId, members.authUserId],
+      set: {
+        email: user.email,
+        name: user.name,
+        role: user.role === "admin" ? "admin" : "member",
+      },
+    });
 }
 
 export async function createWorkspaceForUser(
