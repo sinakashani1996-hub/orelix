@@ -21,7 +21,9 @@ test("build contains the finished Orelix Office product surface", async () => {
   assert.match(dashboard, /Goedemorgen/);
   assert.match(dashboard, /Werk voor jou klaar/);
   assert.match(dashboard, /Offerte Assistent/);
-  assert.match(dashboard, /Gmail verbonden/);
+  assert.match(dashboard, /Mail verbonden/);
+  assert.match(dashboard, /Mail koppelen/);
+  assert.match(dashboard, /Eigen e-mail \(IMAP\/SMTP\)/);
   assert.match(dashboard, /ORIGINELE E-MAIL/);
   assert.match(dashboard, /VOORGESTELD ANTWOORD/);
   assert.match(dashboard, /<textarea/);
@@ -42,7 +44,7 @@ test("build contains the finished Orelix Office product surface", async () => {
   assert.match(workItemsRoute, /Alleen gearchiveerde dossiers/);
   assert.doesNotMatch(
     dashboard,
-    /Jan Peeters|Elise Vermeulen|Tom De Smet|38 taken|1u 47m|96%/,
+    /Jan Peeters|Elise Vermeulen|Tom De Smet|sina\.kashani@orelix\.be|38 taken|1u 47m|96%/,
   );
   assert.match(layout, /Orelix Office/);
   assert.match(layout, /openGraph/);
