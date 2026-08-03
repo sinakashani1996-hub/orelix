@@ -175,9 +175,9 @@ export function Dashboard({
   const [mailboxForm, setMailboxForm] = useState({
     email: "",
     password: "",
-    imapHost: "imap.mailprotect.be",
+    imapHost: "",
     imapPort: "993",
-    smtpHost: "smtp-auth.mailprotect.be",
+    smtpHost: "",
     smtpPort: "465",
   });
   const [draftValue, setDraftValue] = useState("");
@@ -831,10 +831,10 @@ export function Dashboard({
                     {imapConfigured
                       ? "Eigen mailbox gekoppeld"
                       : gmailNeedsReconnect
-                        ? "Gmail opnieuw verbinden"
-                        : integration
-                          ? "Gmail verbonden"
-                          : "Gmail koppelen"}
+                      ? "Mail opnieuw verbinden"
+                      : integration
+                          ? "Mail verbonden"
+                          : "Mail koppelen"}
                   </strong>
                   <small>
                     {imapConfigured
@@ -1727,7 +1727,7 @@ export function Dashboard({
             <div className="mailbox-modal-heading">
               <div>
                 <p className="drawer-label">EIGEN MAILBOX</p>
-                <h2>Easyhost of andere IMAP-mailbox koppelen</h2>
+                <h2>Eigen e-mail koppelen (IMAP/SMTP)</h2>
               </div>
               <button
                 type="button"
@@ -1746,7 +1746,9 @@ export function Dashboard({
               <input
                 type="email"
                 required
-                placeholder="sina.kashani@orelix.be"
+                name="mailbox-account-email"
+                autoComplete="off"
+                placeholder="naam@jouwbedrijf.be"
                 value={mailboxForm.email}
                 onChange={(event) => setMailboxForm({ ...mailboxForm, email: event.target.value })}
               />
@@ -1756,7 +1758,10 @@ export function Dashboard({
               <input
                 type="password"
                 required
-                autoComplete="current-password"
+                name="mailbox-account-password"
+                autoComplete="new-password"
+                data-1p-ignore="true"
+                data-lpignore="true"
                 value={mailboxForm.password}
                 onChange={(event) => setMailboxForm({ ...mailboxForm, password: event.target.value })}
               />
@@ -1764,7 +1769,7 @@ export function Dashboard({
             <div className="mail-server-grid">
               <label>
                 IMAP-server
-                <input value={mailboxForm.imapHost} onChange={(event) => setMailboxForm({ ...mailboxForm, imapHost: event.target.value })} required />
+                <input placeholder="imap.jouwprovider.be" autoComplete="off" value={mailboxForm.imapHost} onChange={(event) => setMailboxForm({ ...mailboxForm, imapHost: event.target.value })} required />
               </label>
               <label>
                 IMAP-poort
@@ -1772,7 +1777,7 @@ export function Dashboard({
               </label>
               <label>
                 SMTP-server
-                <input value={mailboxForm.smtpHost} onChange={(event) => setMailboxForm({ ...mailboxForm, smtpHost: event.target.value })} required />
+                <input placeholder="smtp.jouwprovider.be" autoComplete="off" value={mailboxForm.smtpHost} onChange={(event) => setMailboxForm({ ...mailboxForm, smtpHost: event.target.value })} required />
               </label>
               <label>
                 SMTP-poort

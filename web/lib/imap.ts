@@ -123,7 +123,7 @@ async function openImap(settings: ImapMailboxSettings) {
       await writer.write(new TextEncoder().encode(`${tag} ${command}\r\n`));
       const response = await reader.readUntil(tag);
       if (!/\bOK\b/i.test(response.tagged)) {
-        throw new Error("De mailboxserver weigerde de aanvraag");
+        throw new Error(imapFailureMessage(response.tagged));
       }
       return response;
     },
@@ -319,6 +319,16 @@ function isSafeMailHost(value: string) {
 
 function escapeRegExp(value: string) {
   return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
+function imapFailureMessage(response: string) {
+  if (/AUTHENTICATIONFAILED|AUTHENTICATE failed|invalid credentials|login failed/i.test(response)) {
+    return "Aanmelden bij de mailbox is geweigerd. Controleer het e-mailadres en het mailboxwachtwoord van je mailprovider (niet je Orelix-wachtwoord).";
+  }
+  if (/too many|rate limit|temporarily unavailable/i.test(response)) {
+    return "De mailserver is tijdelijk niet beschikbaar. Wacht even en probeer opnieuw.";
+  }
+  return "De mailserver weigerde de aanmelding. Controleer IMAP-server, poort en mailboxwachtwoord bij je provider.";
 }
 
 function fromBase64(value: string) {
