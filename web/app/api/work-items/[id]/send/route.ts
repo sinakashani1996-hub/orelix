@@ -1,11 +1,12 @@
 import { and, eq } from "drizzle-orm";
 import { getDb } from "../../../../../db";
-import { auditEvents, workItems } from "../../../../../db/schema";
+import { auditEvents, integrations, workItems } from "../../../../../db/schema";
 import { getAppContext } from "../../../../../lib/context";
 import {
   integrationForOrganization,
   sendWorkItemEmail,
 } from "../../../../../lib/gmail";
+import { sendSmtpWorkItemEmail } from "../../../../../lib/smtp";
 import {
   normalizeQuoteBuilder,
   quoteValidationIssues,
@@ -37,10 +38,23 @@ export async function POST(
   if (!item) {
     return Response.json({ error: "Dossier niet gevonden" }, { status: 404 });
   }
-  const integration = await integrationForOrganization(context.organization.id);
+  const gmail = await integrationForOrganization(context.organization.id);
+  const imap = (
+    await db
+      .select()
+      .from(integrations)
+      .where(
+        and(
+          eq(integrations.organizationId, context.organization.id),
+          eq(integrations.provider, "imap_smtp"),
+        ),
+      )
+      .limit(1)
+  )[0];
+  const integration = gmail || imap;
   if (!integration) {
     return Response.json(
-      { error: "Koppel eerst Gmail voordat je een bericht verzendt." },
+      { error: "Koppel eerst een mailbox voordat je een bericht verzendt." },
       { status: 409 },
     );
   }
@@ -119,7 +133,14 @@ export async function POST(
     });
   }
 
-  const sent = await sendWorkItemEmail(integration, {
+  const sent = integration.provider === "imap_smtp"
+    ? await sendSmtpWorkItemEmail(integration, {
+        ...item,
+        draft: finalDraft,
+        attachment,
+        subjectOverride,
+      })
+    : await sendWorkItemEmail(integration, {
     ...item,
     draft: finalDraft,
     attachment,
@@ -133,6 +154,7 @@ export async function POST(
     .set({
       status: "sent",
       conversationJson: JSON.stringify(conversation),
+      providerThreadId: sent.threadId || item.providerThreadId,
       updatedAt: now,
     })
     .where(eq(workItems.id, item.id));
@@ -141,7 +163,7 @@ export async function POST(
     workItemId: item.id,
     actor: context.user.email,
     action: "sent",
-    details: `Gmail message ${sent.id} sent after explicit approval`,
+    details: `E-mail ${sent.id} verzonden na expliciete goedkeuring`,
   });
 
   return Response.json({ status: "sent", messageId: sent.id });

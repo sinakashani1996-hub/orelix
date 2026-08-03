@@ -15,6 +15,7 @@ import {
   FileText,
   Inbox,
   LayoutDashboard,
+  LogOut,
   Mail,
   MessageSquareText,
   MoreHorizontal,
@@ -32,7 +33,7 @@ import {
   X,
   Zap,
 } from "lucide-react";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState, type FormEvent } from "react";
 import {
   formatEuro,
   normalizeQuoteBuilder,
@@ -69,8 +70,8 @@ type Module = {
   status: string;
 };
 
-type GmailIntegration = {
-  provider: "gmail";
+type MailboxIntegration = {
+  provider: "gmail" | "imap_smtp";
   status: string;
   accountEmail: string;
   updatedAt: string;
@@ -168,13 +169,25 @@ export function Dashboard({
   const [syncingInbox, setSyncingInbox] = useState(false);
   const [loadError, setLoadError] = useState("");
   const [toast, setToast] = useState("");
-  const [integration, setIntegration] = useState<GmailIntegration | null>(null);
+  const [integration, setIntegration] = useState<MailboxIntegration | null>(null);
+  const [mailboxPickerOpen, setMailboxPickerOpen] = useState(false);
+  const [mailboxSetupOpen, setMailboxSetupOpen] = useState(false);
+  const [mailboxForm, setMailboxForm] = useState({
+    email: "",
+    password: "",
+    imapHost: "imap.mailprotect.be",
+    imapPort: "993",
+    smtpHost: "smtp-auth.mailprotect.be",
+    smtpPort: "465",
+  });
   const [draftValue, setDraftValue] = useState("");
   const [quoteBuilder, setQuoteBuilder] = useState<QuoteBuilder | null>(null);
   const [quoteSavedSnapshot, setQuoteSavedSnapshot] = useState("");
   const [quoteBuilderOpen, setQuoteBuilderOpen] = useState(false);
   const [busy, setBusy] = useState(false);
-  const gmailNeedsReconnect = integration?.status === "needs_reconnect";
+  const gmailNeedsReconnect =
+    integration?.provider === "gmail" && integration.status === "needs_reconnect";
+  const imapConfigured = integration?.provider === "imap_smtp";
 
   const loadWorkspace = useCallback(async () => {
     setSyncing(true);
@@ -260,6 +273,43 @@ export function Dashboard({
       setBusy(false);
       setSyncingInbox(false);
       window.setTimeout(() => setToast(""), 4200);
+    }
+  }
+
+  async function connectOwnMailbox(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    setBusy(true);
+    try {
+      const response = await fetch("/api/integrations/imap/connect", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          ...mailboxForm,
+          imapPort: Number(mailboxForm.imapPort),
+          smtpPort: Number(mailboxForm.smtpPort),
+        }),
+      });
+      const data = await response.json();
+      if (!response.ok) {
+        throw new Error(data.error || "Mailbox koppelen is niet gelukt");
+      }
+      setMailboxForm((current) => ({ ...current, password: "" }));
+      setMailboxSetupOpen(false);
+      await loadWorkspace();
+      setToast(
+        data.processed > 0
+          ? `Mailbox gekoppeld: ${data.processed} recente berichten verwerkt.`
+          : "Mailbox veilig geverifieerd en gekoppeld aan deze workspace.",
+      );
+    } catch (caught) {
+      setToast(
+        caught instanceof Error
+          ? caught.message
+          : "Mailbox koppelen is niet gelukt.",
+      );
+    } finally {
+      setBusy(false);
+      window.setTimeout(() => setToast(""), 5200);
     }
   }
 
@@ -731,6 +781,10 @@ export function Dashboard({
             </span>
             <MoreHorizontal size={17} />
           </div>
+          <a className="logout-link" href="/logout">
+            <LogOut size={17} />
+            Uitloggen
+          </a>
         </div>
       </aside>
 
@@ -764,33 +818,36 @@ export function Dashboard({
               <p>Je digitale team heeft alvast het voorwerk gedaan.</p>
             </div>
             <div className="mail-status-wrap">
-              <a
+              <button
+                type="button"
                 className={`mail-status ${integration && !gmailNeedsReconnect ? "connected" : "disconnected"}`}
-                href={
-                  integration && !gmailNeedsReconnect
-                    ? "#instellingen"
-                    : "/api/integrations/gmail/start"
-                }
+                onClick={() => {
+                  if (!integration && !gmailNeedsReconnect) setMailboxPickerOpen(true);
+                }}
               >
                 <span className="gmail-mark">M</span>
                 <span>
                   <strong>
-                    {gmailNeedsReconnect
-                      ? "Gmail opnieuw verbinden"
-                      : integration
-                        ? "Gmail verbonden"
-                        : "Gmail koppelen"}
+                    {imapConfigured
+                      ? "Eigen mailbox gekoppeld"
+                      : gmailNeedsReconnect
+                        ? "Gmail opnieuw verbinden"
+                        : integration
+                          ? "Gmail verbonden"
+                          : "Gmail koppelen"}
                   </strong>
                   <small>
-                    {gmailNeedsReconnect
-                      ? "Toegang verlopen — klik om te herstellen"
-                      : integration
+                    {imapConfigured
                       ? integration.accountEmail
-                      : "Ontvang echte aanvragen in Orelix"}
+                      : gmailNeedsReconnect
+                        ? "Toegang verlopen — klik om te herstellen"
+                        : integration
+                          ? integration.accountEmail
+                          : "Ontvang echte aanvragen in Orelix"}
                   </small>
                 </span>
                 {integration && !gmailNeedsReconnect ? <CheckCircle2 size={18} /> : <ArrowRight size={18} />}
-              </a>
+              </button>
               {integration && !gmailNeedsReconnect && (
                 <button
                   type="button"
@@ -1655,13 +1712,114 @@ export function Dashboard({
                       ? "Maak de offerte eerst compleet"
                     : integration
                       ? "Goedkeuren & verzenden"
-                      : "Koppel Gmail om te verzenden"}
+                      : "Koppel een mailbox om te verzenden"}
                   <Send size={16} />
                 </button>
               </div>
             )}
           </aside>
         </>
+      )}
+
+      {mailboxSetupOpen && (
+        <div className="mailbox-modal-backdrop" role="presentation">
+          <form className="mailbox-modal" onSubmit={connectOwnMailbox}>
+            <div className="mailbox-modal-heading">
+              <div>
+                <p className="drawer-label">EIGEN MAILBOX</p>
+                <h2>Easyhost of andere IMAP-mailbox koppelen</h2>
+              </div>
+              <button
+                type="button"
+                className="icon-button"
+                aria-label="Sluiten"
+                onClick={() => setMailboxSetupOpen(false)}
+              >
+                <X size={18} />
+              </button>
+            </div>
+            <p className="mailbox-help">
+              Orelix controleert de mailbox eerst. Je wachtwoord wordt versleuteld opgeslagen en verschijnt nooit opnieuw in Orelix.
+            </p>
+            <label>
+              E-mailadres
+              <input
+                type="email"
+                required
+                placeholder="sina.kashani@orelix.be"
+                value={mailboxForm.email}
+                onChange={(event) => setMailboxForm({ ...mailboxForm, email: event.target.value })}
+              />
+            </label>
+            <label>
+              Mailboxwachtwoord
+              <input
+                type="password"
+                required
+                autoComplete="current-password"
+                value={mailboxForm.password}
+                onChange={(event) => setMailboxForm({ ...mailboxForm, password: event.target.value })}
+              />
+            </label>
+            <div className="mail-server-grid">
+              <label>
+                IMAP-server
+                <input value={mailboxForm.imapHost} onChange={(event) => setMailboxForm({ ...mailboxForm, imapHost: event.target.value })} required />
+              </label>
+              <label>
+                IMAP-poort
+                <input inputMode="numeric" value={mailboxForm.imapPort} onChange={(event) => setMailboxForm({ ...mailboxForm, imapPort: event.target.value })} required />
+              </label>
+              <label>
+                SMTP-server
+                <input value={mailboxForm.smtpHost} onChange={(event) => setMailboxForm({ ...mailboxForm, smtpHost: event.target.value })} required />
+              </label>
+              <label>
+                SMTP-poort
+                <input inputMode="numeric" value={mailboxForm.smtpPort} onChange={(event) => setMailboxForm({ ...mailboxForm, smtpPort: event.target.value })} required />
+              </label>
+            </div>
+            <div className="mailbox-modal-actions">
+              <button type="button" className="secondary-button" onClick={() => setMailboxSetupOpen(false)}>Annuleren</button>
+              <button type="submit" className="approve-button" disabled={busy}>
+                <Check size={16} />
+                {busy ? "Controleren…" : "Mailbox controleren"}
+              </button>
+            </div>
+          </form>
+        </div>
+      )}
+
+      {mailboxPickerOpen && (
+        <div className="mailbox-picker-backdrop" role="presentation">
+          <section className="mailbox-picker" role="dialog" aria-modal="true" aria-labelledby="mailbox-picker-title">
+            <button type="button" className="icon-button mailbox-picker-close" aria-label="Sluiten" onClick={() => setMailboxPickerOpen(false)}>
+              <X size={19} />
+            </button>
+            <p className="eyebrow">MAILBOX KOPPELEN</p>
+            <h2 id="mailbox-picker-title">Welke e-mail gebruikt je bedrijf?</h2>
+            <p className="mailbox-picker-intro">Kies je provider. Je kan later altijd een andere mailbox koppelen.</p>
+            <a className="mailbox-option active" href="/api/integrations/gmail/start">
+              <span className="mailbox-provider-mark gmail">G</span>
+              <span><strong>Gmail</strong><small>Google Workspace of Gmail</small></span>
+              <ArrowRight size={18} />
+            </a>
+            <div className="mailbox-option disabled" aria-disabled="true">
+              <span className="mailbox-provider-mark microsoft">M</span>
+              <span><strong>Outlook & Microsoft 365</strong><small>Binnenkort beschikbaar</small></span>
+              <span className="coming-soon">Binnenkort</span>
+            </div>
+            <button
+              type="button"
+              className="mailbox-option active"
+              onClick={() => { setMailboxPickerOpen(false); setMailboxSetupOpen(true); }}
+            >
+              <span className="mailbox-provider-mark imap"><Mail size={17} /></span>
+              <span><strong>Eigen e-mail (IMAP/SMTP)</strong><small>Easyhost, Combell, TransIP en andere providers</small></span>
+              <ArrowRight size={18} />
+            </button>
+          </section>
+        </div>
       )}
 
       {toast && (

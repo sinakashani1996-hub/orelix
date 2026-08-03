@@ -8,6 +8,7 @@ import {
   processGmailNotification,
   recoverRecentMessages,
 } from "../../../../lib/gmail";
+import { syncImapMailbox } from "../../../../lib/imap-sync";
 
 // Manually triggers Gmail ingestion for the current workspace. Used by the
 // "Postvak synchroniseren" button when a push is missed or arrives late, so a
@@ -31,12 +32,16 @@ export async function POST(request: Request) {
   )[0];
   if (!integration) {
     return Response.json(
-      { error: "Koppel eerst Gmail voordat je het postvak synchroniseert." },
+      { error: "Koppel eerst een mailbox voordat je het postvak synchroniseert." },
       { status: 409 },
     );
   }
 
   try {
+    if (integration.provider === "imap_smtp") {
+      const result = await syncImapMailbox(integration);
+      return Response.json({ ok: true, ...result });
+    }
     const force =
       new URL(request.url).searchParams.get("force") === "true";
     let processed: number;
@@ -64,16 +69,16 @@ export async function POST(request: Request) {
     const message =
       caught instanceof Error
         ? caught.message
-        : "Unknown Gmail sync error";
+        : "Unknown mailbox sync error";
     console.error(
       JSON.stringify({
-        event: "gmail_sync_failed",
+        event: "mailbox_sync_failed",
         organizationId: context.organization.id,
         error: message,
       }),
     );
     return Response.json(
-      { error: "Synchroniseren van het postvak is niet gelukt." },
+      { error: "Synchroniseren van het postvak is niet gelukt. Controleer de mailboxinstellingen." },
       { status: 500 },
     );
   }

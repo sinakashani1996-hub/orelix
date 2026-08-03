@@ -101,6 +101,7 @@ export const integrations = sqliteTable(
     accountEmail: text("account_email").notNull(),
     status: text("status").notNull().default("connected"),
     encryptedRefreshToken: text("encrypted_refresh_token").notNull(),
+    encryptedCredentials: text("encrypted_credentials").notNull().default(""),
     scopes: text("scopes").notNull(),
     historyId: text("history_id"),
     watchExpiration: text("watch_expiration"),

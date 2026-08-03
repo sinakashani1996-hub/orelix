@@ -105,6 +105,7 @@ export async function ensureDatabase() {
         account_email TEXT NOT NULL,
         status TEXT NOT NULL DEFAULT 'connected',
         encrypted_refresh_token TEXT NOT NULL,
+        encrypted_credentials TEXT NOT NULL DEFAULT '',
         scopes TEXT NOT NULL,
         history_id TEXT,
         watch_expiration TEXT,
@@ -177,6 +178,15 @@ export async function ensureDatabase() {
     if (workItemColumns.results.some((column) => column.name === name)) continue;
     await env.DB.prepare(
       `ALTER TABLE work_items ADD COLUMN ${name} ${definition}`,
+    ).run();
+  }
+
+  const integrationColumns = await env.DB.prepare(
+    "PRAGMA table_info(integrations)",
+  ).all<{ name: string }>();
+  if (!integrationColumns.results.some((column) => column.name === "encrypted_credentials")) {
+    await env.DB.prepare(
+      "ALTER TABLE integrations ADD COLUMN encrypted_credentials TEXT NOT NULL DEFAULT ''",
     ).run();
   }
 }

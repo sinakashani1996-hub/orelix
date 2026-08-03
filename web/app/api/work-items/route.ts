@@ -1,6 +1,6 @@
 import { and, desc, eq } from "drizzle-orm";
 import { ensureDatabase, getDb } from "../../../db";
-import { auditEvents, modules, workItems } from "../../../db/schema";
+import { auditEvents, integrations, modules, workItems } from "../../../db/schema";
 import { getAppContext } from "../../../lib/context";
 import {
   ensureGmailWatch,
@@ -75,7 +75,7 @@ export async function GET() {
   await ensureDatabase();
   await ensureModuleCatalog();
   const db = getDb();
-  const [items, moduleRows, gmail] = await Promise.all([
+  const [items, moduleRows, gmail, imap] = await Promise.all([
     db
       .select()
       .from(workItems)
@@ -83,6 +83,17 @@ export async function GET() {
       .orderBy(desc(workItems.receivedAt)),
     db.select().from(modules),
     integrationForOrganization(context.organization.id),
+    db
+      .select()
+      .from(integrations)
+      .where(
+        and(
+          eq(integrations.organizationId, context.organization.id),
+          eq(integrations.provider, "imap_smtp"),
+        ),
+      )
+      .limit(1)
+      .then((rows) => rows[0]),
   ]);
   let activeGmail = gmail;
   let gmailNeedsReconnect = false;
@@ -163,13 +174,17 @@ export async function GET() {
     modules: moduleRows,
     user: { name: context.user.name, email: context.user.email },
     organization: context.organization,
-    integration: activeGmail
+    integration: activeGmail || imap
       ? {
-          provider: "gmail",
-          status: gmailNeedsReconnect ? "needs_reconnect" : activeGmail.status,
-          accountEmail: activeGmail.accountEmail,
-          watchExpiration: activeGmail.watchExpiration,
-          updatedAt: activeGmail.updatedAt,
+          provider: activeGmail ? "gmail" : "imap_smtp",
+          status: activeGmail
+            ? gmailNeedsReconnect
+              ? "needs_reconnect"
+              : activeGmail.status
+            : imap!.status,
+          accountEmail: activeGmail?.accountEmail || imap!.accountEmail,
+          watchExpiration: activeGmail?.watchExpiration || null,
+          updatedAt: activeGmail?.updatedAt || imap!.updatedAt,
         }
       : null,
   });

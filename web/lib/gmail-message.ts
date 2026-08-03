@@ -4,6 +4,9 @@ export type OutboundWorkItemEmail = {
   sourceSubject: string | null;
   draft: string;
   providerThreadId: string | null;
+  fromEmail?: string;
+  messageId?: string;
+  replyToMessageId?: string | null;
   subjectOverride?: string;
   attachment?: {
     filename: string;
@@ -19,8 +22,16 @@ export function buildGmailRawMessage(workItem: OutboundWorkItemEmail) {
       ? workItem.sourceSubject
       : `Re: ${workItem.sourceSubject || "Uw aanvraag"}`);
   const headers = [
+    ...(workItem.fromEmail ? [`From: <${workItem.fromEmail}>`] : []),
     `To: ${mimeHeader(workItem.customerName)} <${workItem.customerEmail}>`,
     `Subject: ${mimeHeader(subject)}`,
+    ...(workItem.messageId ? [`Message-ID: ${workItem.messageId}`] : []),
+    ...(workItem.replyToMessageId
+      ? [
+          `In-Reply-To: ${workItem.replyToMessageId}`,
+          `References: ${workItem.replyToMessageId}`,
+        ]
+      : []),
     "MIME-Version: 1.0",
   ];
 
