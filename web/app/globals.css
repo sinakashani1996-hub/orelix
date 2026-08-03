@@ -678,6 +678,17 @@ a {
   white-space: nowrap;
 }
 
+.disconnect-mailbox-button {
+  color: #9b392e;
+  border-color: #efc9c3;
+  background: #fff8f6;
+}
+
+.disconnect-mailbox-button:hover {
+  border-color: #d98276;
+  background: #fff0ed;
+}
+
 .sync-inbox-button .spinning {
   animation: sync-spin 0.8s linear infinite;
 }

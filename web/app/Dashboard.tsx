@@ -276,6 +276,29 @@ export function Dashboard({
     }
   }
 
+  async function disconnectMailbox() {
+    if (integration?.provider !== "imap_smtp") return;
+    if (!window.confirm("Deze mailbox ontkoppelen? Orelix verwijdert de versleutelde mailboxgegevens. Je dossiers blijven bewaard.")) {
+      return;
+    }
+    setBusy(true);
+    try {
+      const response = await fetch("/api/integrations/imap/disconnect", {
+        method: "POST",
+      });
+      const data = await response.json();
+      if (!response.ok) throw new Error(data.error || "Mailbox ontkoppelen is niet gelukt");
+      setIntegration(null);
+      await loadWorkspace();
+      setToast("Mailbox ontkoppeld. Je dossiers blijven bewaard.");
+    } catch (caught) {
+      setToast(caught instanceof Error ? caught.message : "Mailbox ontkoppelen is niet gelukt.");
+    } finally {
+      setBusy(false);
+      window.setTimeout(() => setToast(""), 4200);
+    }
+  }
+
   async function connectOwnMailbox(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     setBusy(true);
@@ -858,6 +881,16 @@ export function Dashboard({
                 >
                   <RefreshCw size={16} className={syncingInbox ? "spinning" : ""} />
                   {syncingInbox ? "Synchroniseren…" : "Postvak synchroniseren"}
+                </button>
+              )}
+              {integration?.provider === "imap_smtp" && (
+                <button
+                  type="button"
+                  className="secondary-button disconnect-mailbox-button"
+                  disabled={busy}
+                  onClick={() => void disconnectMailbox()}
+                >
+                  Mailbox ontkoppelen
                 </button>
               )}
             </div>
