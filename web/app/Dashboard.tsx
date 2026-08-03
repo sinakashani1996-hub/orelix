@@ -171,6 +171,7 @@ export function Dashboard({
   const [toast, setToast] = useState("");
   const [integration, setIntegration] = useState<MailboxIntegration | null>(null);
   const [mailboxPickerOpen, setMailboxPickerOpen] = useState(false);
+  const [mailboxMenuOpen, setMailboxMenuOpen] = useState(false);
   const [mailboxSetupOpen, setMailboxSetupOpen] = useState(false);
   const [mailboxForm, setMailboxForm] = useState({
     email: "",
@@ -841,11 +842,13 @@ export function Dashboard({
               <p>Je digitale team heeft alvast het voorwerk gedaan.</p>
             </div>
             <div className="mail-status-wrap">
+              <div className="mailbox-control">
               <button
                 type="button"
                 className={`mail-status ${integration && !gmailNeedsReconnect ? "connected" : "disconnected"}`}
                 onClick={() => {
-                  if (!integration && !gmailNeedsReconnect) setMailboxPickerOpen(true);
+                  if (integration && !gmailNeedsReconnect) setMailboxMenuOpen((open) => !open);
+                  else if (!gmailNeedsReconnect) setMailboxPickerOpen(true);
                 }}
               >
                 <span className="gmail-mark">M</span>
@@ -871,6 +874,7 @@ export function Dashboard({
                 </span>
                 {integration && !gmailNeedsReconnect ? <CheckCircle2 size={18} /> : <ArrowRight size={18} />}
               </button>
+              <div className={`mailbox-actions ${mailboxMenuOpen ? "open" : ""}`} role="menu" aria-label="Mailboxacties">
               {integration && !gmailNeedsReconnect && (
                 <button
                   type="button"
@@ -893,6 +897,8 @@ export function Dashboard({
                   Mailbox ontkoppelen
                 </button>
               )}
+              </div>
+              </div>
             </div>
           </section>
 

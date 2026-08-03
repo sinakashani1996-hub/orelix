@@ -667,9 +667,43 @@ a {
 .mail-status-wrap {
   display: flex;
   align-items: center;
-  gap: 10px;
-  flex-wrap: wrap;
 }
+
+.mailbox-control {
+  position: relative;
+}
+
+.mailbox-actions {
+  position: absolute;
+  top: calc(100% + 8px);
+  right: 0;
+  z-index: 10;
+  display: none;
+  width: 100%;
+  min-width: 270px;
+  overflow: hidden;
+  border: 1px solid #d9e3dd;
+  border-radius: 12px;
+  background: #fff;
+  box-shadow: 0 12px 28px rgba(17, 36, 30, 0.15);
+}
+
+.mailbox-actions.open { display: grid; }
+
+.mailbox-actions .secondary-button {
+  justify-content: flex-start;
+  min-height: 44px;
+  padding: 10px 14px;
+  border: 0;
+  border-bottom: 1px solid #edf1ee;
+  border-radius: 0;
+  background: #fff;
+  box-shadow: none;
+}
+
+.mailbox-actions .secondary-button:last-child { border-bottom: 0; }
+.mailbox-actions .secondary-button:hover { background: #f3faf6; }
+.mailbox-actions .disconnect-mailbox-button:hover { background: #fff3f0; }
 
 .sync-inbox-button {
   display: inline-flex;
