@@ -53,6 +53,7 @@ export const workItems = sqliteTable("work_items", {
   draft: text("draft").notNull().default(""),
   providerMessageId: text("provider_message_id"),
   providerThreadId: text("provider_thread_id"),
+  mailboxIntegrationId: text("mailbox_integration_id"),
   sourceSubject: text("source_subject"),
   sourceBody: text("source_body").notNull().default(""),
   kind: text("kind").notNull().default("quote_request"),
@@ -73,6 +74,34 @@ export const auditEvents = sqliteTable("audit_events", {
   details: text("details").notNull().default(""),
   createdAt: text("created_at").notNull().default(sql`CURRENT_TIMESTAMP`),
 });
+
+export const quoteSignatures = sqliteTable(
+  "quote_signatures",
+  {
+    id: text("id").primaryKey(),
+    organizationId: text("organization_id").notNull(),
+    workItemId: text("work_item_id").notNull(),
+    tokenHash: text("token_hash").notNull(),
+    quoteSnapshotJson: text("quote_snapshot_json").notNull(),
+    quoteHash: text("quote_hash").notNull(),
+    customerName: text("customer_name").notNull(),
+    customerEmail: text("customer_email").notNull(),
+    status: text("status").notNull().default("pending"),
+    expiresAt: text("expires_at").notNull(),
+    sentAt: text("sent_at").notNull(),
+    viewedAt: text("viewed_at"),
+    signerName: text("signer_name"),
+    signatureDataUrl: text("signature_data_url"),
+    acceptedAt: text("accepted_at"),
+    acceptedIp: text("accepted_ip"),
+    acceptedUserAgent: text("accepted_user_agent"),
+    createdAt: text("created_at").notNull().default(sql`CURRENT_TIMESTAMP`),
+    updatedAt: text("updated_at").notNull().default(sql`CURRENT_TIMESTAMP`),
+  },
+  (table) => [
+    uniqueIndex("quote_signatures_token_idx").on(table.tokenHash),
+  ],
+);
 
 export const organizationModules = sqliteTable(
   "organization_modules",

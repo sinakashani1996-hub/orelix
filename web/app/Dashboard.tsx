@@ -33,7 +33,7 @@ import {
   X,
   Zap,
 } from "lucide-react";
-import { useCallback, useEffect, useMemo, useState, type FormEvent } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type FormEvent } from "react";
 import {
   formatEuro,
   normalizeQuoteBuilder,
@@ -61,6 +61,10 @@ type WorkItem = {
   extractedJson?: string;
   quoteJson?: string;
   aiProvider?: string;
+  quoteStatus?: "sent" | "viewed" | "signed";
+  quoteSentAt?: string | null;
+  quoteViewedAt?: string | null;
+  quoteSignedAt?: string | null;
 };
 
 type Module = {
@@ -82,13 +86,15 @@ type AssignableModuleId =
   | "inbox_assistant"
   | "service_assistant";
 
-const closedStatuses = ["sent", "dismissed", "approved"];
+const closedStatuses = ["sent", "dismissed", "approved", "signed"];
 
 const recordStatusLabels: Record<string, string> = {
   needs_approval: "Goedkeuren",
   draft_ready: "Concept",
   sent: "Verzonden",
+  viewed: "Bekeken",
   approved: "Goedgekeurd",
+  signed: "Ondertekend",
   dismissed: "Archief",
   routed: "Openstaand",
 };
@@ -151,6 +157,15 @@ function belgianDateKey(value: string | Date) {
   }).format(new Date(value));
 }
 
+function requireActiveSession(response: Response) {
+  if (response.status !== 401) return;
+  // A hot reload can leave the dashboard visible after its WorkOS cookie has
+  // expired. Never let that stale UI submit mailbox credentials as though the
+  // user were still signed in.
+  window.location.assign("/?auth=session-expired");
+  throw new Error("Je sessie is verlopen. Meld je opnieuw aan.");
+}
+
 export function Dashboard({
   displayName,
   organizationName,
@@ -163,6 +178,7 @@ export function Dashboard({
   const [items, setItems] = useState<WorkItem[]>([]);
   const [modules, setModules] = useState<Module[]>([]);
   const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [workspaceSection, setWorkspaceSection] = useState<"inbox" | "quotes">("inbox");
   const [filter, setFilter] = useState("open");
   const [query, setQuery] = useState("");
   const [syncing, setSyncing] = useState(true);
@@ -172,7 +188,20 @@ export function Dashboard({
   const [integration, setIntegration] = useState<MailboxIntegration | null>(null);
   const [mailboxPickerOpen, setMailboxPickerOpen] = useState(false);
   const [mailboxMenuOpen, setMailboxMenuOpen] = useState(false);
+  const mailboxControlRef = useRef<HTMLDivElement | null>(null);
   const [mailboxSetupOpen, setMailboxSetupOpen] = useState(false);
+  const [manualQuoteOpen, setManualQuoteOpen] = useState(false);
+  const [openQuoteBuilderForId, setOpenQuoteBuilderForId] = useState<string | null>(null);
+  const [manualQuoteForm, setManualQuoteForm] = useState({
+    customerName: "",
+    customerEmail: "",
+    street: "",
+    houseNumber: "",
+    box: "",
+    postalCode: "",
+    city: "",
+    title: "Offerte zonnepanelen",
+  });
   const [mailboxForm, setMailboxForm] = useState({
     email: "",
     password: "",
@@ -183,6 +212,7 @@ export function Dashboard({
   });
   const [draftValue, setDraftValue] = useState("");
   const [quoteBuilder, setQuoteBuilder] = useState<QuoteBuilder | null>(null);
+  const [quoteInputValues, setQuoteInputValues] = useState<Record<string, string>>({});
   const [quoteSavedSnapshot, setQuoteSavedSnapshot] = useState("");
   const [quoteBuilderOpen, setQuoteBuilderOpen] = useState(false);
   const [busy, setBusy] = useState(false);
@@ -195,6 +225,7 @@ export function Dashboard({
     setLoadError("");
     try {
       const response = await fetch("/api/work-items");
+      requireActiveSession(response);
       if (!response.ok) throw new Error("Workspace laden mislukt");
       const data = await response.json();
       setItems(Array.isArray(data.items) ? data.items : []);
@@ -217,6 +248,28 @@ export function Dashboard({
     return () => window.clearTimeout(timer);
   }, [loadWorkspace]);
 
+  useEffect(() => {
+    if (!mailboxMenuOpen) return;
+
+    const closeWhenOutside = (event: MouseEvent | TouchEvent) => {
+      if (!mailboxControlRef.current?.contains(event.target as Node)) {
+        setMailboxMenuOpen(false);
+      }
+    };
+    const closeOnEscape = (event: KeyboardEvent) => {
+      if (event.key === "Escape") setMailboxMenuOpen(false);
+    };
+
+    document.addEventListener("mousedown", closeWhenOutside);
+    document.addEventListener("touchstart", closeWhenOutside);
+    document.addEventListener("keydown", closeOnEscape);
+    return () => {
+      document.removeEventListener("mousedown", closeWhenOutside);
+      document.removeEventListener("touchstart", closeWhenOutside);
+      document.removeEventListener("keydown", closeOnEscape);
+    };
+  }, [mailboxMenuOpen]);
+
   async function syncInbox() {
     setBusy(true);
     setSyncingInbox(true);
@@ -224,6 +277,7 @@ export function Dashboard({
       const response = await fetch("/api/work-items/sync?force=true", {
         method: "POST",
       });
+      requireActiveSession(response);
       const data = await response.json();
       if (!response.ok) throw new Error(data.error || "Synchroniseren mislukt");
       await loadWorkspace();
@@ -254,6 +308,7 @@ export function Dashboard({
       const response = await fetch("/api/integrations/disconnect", {
         method: "POST",
       });
+      requireActiveSession(response);
       const data = await response.json();
       if (!response.ok) throw new Error(data.error || "Mailbox ontkoppelen is niet gelukt");
       setIntegration(null);
@@ -281,6 +336,7 @@ export function Dashboard({
           smtpPort: Number(mailboxForm.smtpPort),
         }),
       });
+      requireActiveSession(response);
       const data = await response.json();
       if (!response.ok) {
         throw new Error(data.error || "Mailbox koppelen is niet gelukt");
@@ -289,7 +345,9 @@ export function Dashboard({
       setMailboxSetupOpen(false);
       await loadWorkspace();
       setToast(
-        data.processed > 0
+        data.syncWarning
+          ? data.syncWarning
+          : data.processed > 0
           ? `Mailbox gekoppeld: ${data.processed} recente berichten verwerkt.`
           : "Mailbox veilig geverifieerd en gekoppeld aan deze workspace.",
       );
@@ -341,6 +399,10 @@ export function Dashboard({
   }, [selectedId, selected?.draft]);
 
   useEffect(() => {
+    setQuoteInputValues({});
+  }, [selectedId]);
+
+  useEffect(() => {
     const timer = window.setTimeout(() => {
       const quote = selected ? parseQuoteConcept(selected.quoteJson) : null;
       if (!selected || !quote?.ready) {
@@ -361,7 +423,9 @@ export function Dashboard({
       setQuoteSavedSnapshot(
         quote.builder ? JSON.stringify(quote.builder) : "",
       );
-      setQuoteBuilderOpen(Boolean(quote.builder));
+      setQuoteBuilderOpen(
+        Boolean(quote.builder) || openQuoteBuilderForId === selected.id,
+      );
     }, 0);
     return () => window.clearTimeout(timer);
   }, [
@@ -371,6 +435,12 @@ export function Dashboard({
     selected?.quoteJson,
     selectedId,
   ]);
+
+  useEffect(() => {
+    if (openQuoteBuilderForId && selectedId === openQuoteBuilderForId && quoteBuilder) {
+      setOpenQuoteBuilderForId(null);
+    }
+  }, [openQuoteBuilderForId, quoteBuilder, selectedId]);
 
   const quoteDirty =
     quoteBuilder !== null &&
@@ -387,33 +457,42 @@ export function Dashboard({
     selectedQuote?.ready === true && (!storedQuoteSendable || quoteDirty);
   const currentQuoteTotals = quoteBuilder ? quoteTotals(quoteBuilder) : null;
 
+  const quoteItems = items.filter(
+    (item) => item.moduleId === "quote_assistant" || Boolean(item.quoteStatus),
+  );
+  const emailItems = items.filter(
+    (item) => item.moduleId !== "quote_assistant" && !item.quoteStatus,
+  );
+  const sectionItems = workspaceSection === "quotes" ? quoteItems : emailItems;
+
   const visibleItems = useMemo(() => {
-    return items.filter((item) => {
+    return sectionItems.filter((item) => {
       const isOpen = !closedStatuses.includes(item.status);
       const matchesFilter =
         filter === "all_records" ||
         (filter === "open" && isOpen) ||
         (filter === "approval" && item.status === "needs_approval") ||
         (filter === "drafts" && item.status === "draft_ready") ||
-        (filter === "sent" &&
-          ["sent", "approved"].includes(item.status)) ||
+        (filter === "sent" && item.quoteStatus === "sent") ||
+        (filter === "viewed" && item.quoteStatus === "viewed") ||
+        (filter === "signed" && item.quoteStatus === "signed") ||
         (filter === "archive" && item.status === "dismissed");
       const haystack =
         `${item.customerName} ${item.customerEmail} ${item.title} ${item.summary} ${item.sourceSubject || ""}`.toLowerCase();
       return matchesFilter && haystack.includes(query.toLowerCase());
     });
-  }, [filter, items, query]);
-  const openItems = items.filter(
+  }, [filter, query, sectionItems]);
+  const openItems = sectionItems.filter(
     (item) => !closedStatuses.includes(item.status),
   );
-  const approvalItems = items.filter(
+  const approvalItems = sectionItems.filter(
     (item) => item.status === "needs_approval",
   );
-  const draftItems = items.filter((item) => item.status === "draft_ready");
-  const sentItems = items.filter((item) =>
-    ["sent", "approved"].includes(item.status),
-  );
-  const archivedItems = items.filter((item) => item.status === "dismissed");
+  const draftItems = sectionItems.filter((item) => item.status === "draft_ready");
+  const sentItems = sectionItems.filter((item) => item.quoteStatus === "sent");
+  const viewedItems = sectionItems.filter((item) => item.quoteStatus === "viewed");
+  const signedItems = sectionItems.filter((item) => item.quoteStatus === "signed");
+  const archivedItems = sectionItems.filter((item) => item.status === "dismissed");
   const receivedToday = items.filter(
     (item) => belgianDateKey(item.receivedAt) === belgianDateKey(new Date()),
   ).length;
@@ -446,7 +525,9 @@ export function Dashboard({
       setSelectedId(null);
       setToast(
         status === "approved"
-          ? "Goedgekeurd en veilig via Gmail verzonden"
+          ? data.signatureRequested
+            ? "Offerte verzonden voor ondertekening"
+            : "Goedgekeurd en veilig verzonden"
           : "Dossier naar het archief verplaatst",
       );
     } catch (caught) {
@@ -459,6 +540,56 @@ export function Dashboard({
     }
     setBusy(false);
     window.setTimeout(() => setToast(""), 4200);
+  }
+
+  async function createManualQuote(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    setBusy(true);
+    try {
+      const customerAddress = [
+        `${manualQuoteForm.street.trim()} ${manualQuoteForm.houseNumber.trim()}`.trim(),
+        manualQuoteForm.box.trim() ? `bus ${manualQuoteForm.box.trim()}` : "",
+        `${manualQuoteForm.postalCode.trim()} ${manualQuoteForm.city.trim()}`.trim(),
+      ]
+        .filter(Boolean)
+        .join(", ");
+      const response = await fetch("/api/work-items", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ ...manualQuoteForm, customerAddress }),
+      });
+      requireActiveSession(response);
+      const data = (await response.json()) as { error?: string; item?: WorkItem };
+      if (!response.ok || !data.item) {
+        throw new Error(data.error || "Offerte aanmaken mislukt");
+      }
+      setItems((current) => [data.item!, ...current]);
+      setWorkspaceSection("quotes");
+      setFilter("approval");
+      setSelectedId(data.item.id);
+      setOpenQuoteBuilderForId(data.item.id);
+      setManualQuoteOpen(false);
+      setManualQuoteForm({
+        customerName: "",
+        customerEmail: "",
+        street: "",
+        houseNumber: "",
+        box: "",
+        postalCode: "",
+        city: "",
+        title: "Offerte zonnepanelen",
+      });
+      setToast("Offerte aangemaakt. Vul nu de regels en bedragen aan.");
+    } catch (caught) {
+      setToast(
+        caught instanceof Error
+          ? caught.message
+          : "Offerte aanmaken lukte niet. Probeer opnieuw.",
+      );
+    } finally {
+      setBusy(false);
+      window.setTimeout(() => setToast(""), 4200);
+    }
   }
 
   async function restoreArchivedItem(id: string) {
@@ -575,6 +706,63 @@ export function Dashboard({
           }
         : current,
     );
+  }
+
+  function updateQuoteLineTotal(id: string, value: string) {
+    const totalCents = euroInputToCents(value);
+    setQuoteBuilder((current) =>
+      current
+        ? {
+            ...current,
+            lines: current.lines.map((line) =>
+              line.id === id
+                ? {
+                    ...line,
+                    unitPriceCents: Math.round(
+                      totalCents / Math.max(line.quantity, 0.001),
+                    ),
+                  }
+                : line,
+            ),
+          }
+        : current,
+    );
+  }
+
+  function updateQuoteMoneyInput(
+    id: string,
+    field: "unitPrice" | "lineTotal",
+    value: string,
+  ) {
+    const key = `${id}:${field}`;
+    setQuoteInputValues((current) => ({ ...current, [key]: value }));
+    // Keep a trailing decimal separator visible while the user is still
+    // typing (for example "4007,"), instead of formatting it away.
+    if (/[,.]$/.test(value.trim())) return;
+    if (field === "unitPrice") {
+      updateQuoteLine(id, "unitPriceCents", euroInputToCents(value));
+    } else {
+      updateQuoteLineTotal(id, value);
+    }
+  }
+
+  function commitQuoteMoneyInput(
+    id: string,
+    field: "unitPrice" | "lineTotal",
+  ) {
+    const key = `${id}:${field}`;
+    const value = quoteInputValues[key];
+    if (value === undefined) return;
+    if (field === "unitPrice") {
+      updateQuoteLine(id, "unitPriceCents", euroInputToCents(value));
+    } else {
+      updateQuoteLineTotal(id, value);
+    }
+    setQuoteInputValues((current) => {
+      const next = { ...current };
+      delete next[key];
+      return next;
+    });
   }
 
   function addQuoteLine() {
@@ -796,10 +984,6 @@ export function Dashboard({
             <Bell size={19} />
             <span className="notification-dot" />
           </button>
-          <button className="primary-button">
-            <Sparkles size={17} />
-            Nieuwe aanvraag
-          </button>
         </header>
 
         <div className="content-wrap">
@@ -810,7 +994,27 @@ export function Dashboard({
               <p>Je digitale team heeft alvast het voorwerk gedaan.</p>
             </div>
             <div className="mail-status-wrap">
-              <div className="mailbox-control">
+              <button
+                type="button"
+                className="primary-button quick-quote-button"
+                onClick={() => setManualQuoteOpen(true)}
+              >
+                <Plus size={16} />
+                Nieuwe offerte
+              </button>
+              {integration && !gmailNeedsReconnect && (
+                <button
+                  type="button"
+                  className="mailbox-sync-icon"
+                  disabled={busy || syncingInbox}
+                  onClick={() => void syncInbox()}
+                  title="Postvak synchroniseren"
+                  aria-label="Postvak synchroniseren"
+                >
+                  <RefreshCw size={18} className={syncingInbox ? "spinning" : ""} />
+                </button>
+              )}
+              <div className="mailbox-control" ref={mailboxControlRef}>
               <button
                 type="button"
                 className={`mail-status ${integration && !gmailNeedsReconnect ? "connected" : "disconnected"}`}
@@ -915,6 +1119,32 @@ export function Dashboard({
 
           <div className="dashboard-grid">
             <section className="work-panel" id="werk">
+              <div className="workspace-tabs" role="tablist" aria-label="Werkruimtes">
+                <button
+                  type="button"
+                  role="tab"
+                  aria-selected={workspaceSection === "inbox"}
+                  className={workspaceSection === "inbox" ? "selected" : ""}
+                  onClick={() => {
+                    setWorkspaceSection("inbox");
+                    setFilter("open");
+                  }}
+                >
+                  Inbox <span>{emailItems.filter((item) => !closedStatuses.includes(item.status)).length}</span>
+                </button>
+                <button
+                  type="button"
+                  role="tab"
+                  aria-selected={workspaceSection === "quotes"}
+                  className={workspaceSection === "quotes" ? "selected" : ""}
+                  onClick={() => {
+                    setWorkspaceSection("quotes");
+                    setFilter("open");
+                  }}
+                >
+                  Offertes <span>{quoteItems.filter((item) => !closedStatuses.includes(item.status)).length}</span>
+                </button>
+              </div>
               <div className="section-heading">
                 <div>
                   <h2>
@@ -928,32 +1158,42 @@ export function Dashboard({
                       : "Alleen beslissingen die jouw aandacht nodig hebben."}
                   </p>
                 </div>
-                <button
-                  className="text-button"
-                  onClick={() =>
-                    setFilter(filter === "all_records" ? "open" : "all_records")
-                  }
-                >
-                  {filter === "all_records"
-                    ? "Terug naar openstaand"
-                    : "Alles bekijken"}{" "}
-                  <ArrowRight size={15} />
-                </button>
+                <div className="section-heading-actions">
+                  <button
+                    className="text-button"
+                    onClick={() =>
+                      setFilter(filter === "all_records" ? "open" : "all_records")
+                    }
+                  >
+                    {filter === "all_records"
+                      ? "Terug naar openstaand"
+                      : "Alles bekijken"}{" "}
+                    <ArrowRight size={15} />
+                  </button>
+                </div>
               </div>
 
               <div className="filter-row">
                 {filter === "all_records" && (
                   <button className="selected" onClick={() => setFilter("open")}>
-                    Alle dossiers <span>{items.length}</span>
+                    Alle items <span>{sectionItems.length}</span>
                   </button>
                 )}
-                {[
-                  ["open", "Openstaand", openItems.length],
-                  ["approval", "Goedkeuren", approvalItems.length],
-                  ["drafts", "Concepten", draftItems.length],
-                  ["sent", "Verzonden", sentItems.length],
-                  ["archive", "Archief", archivedItems.length],
-                ].map(([value, label, count]) => (
+                {(workspaceSection === "quotes"
+                  ? [
+                      ["open", "Aanvragen", openItems.length],
+                      ["approval", "Goedkeuren", approvalItems.length],
+                      ["drafts", "Concepten", draftItems.length],
+                      ["sent", "Verzonden", sentItems.length],
+                      ["viewed", "Bekeken", viewedItems.length],
+                      ["signed", "Getekend", signedItems.length],
+                      ["archive", "Archief", archivedItems.length],
+                    ]
+                  : [
+                      ["open", "Openstaand", openItems.length],
+                      ["archive", "Archief", archivedItems.length],
+                    ]
+                ).map(([value, label, count]) => (
                   <button
                     key={value}
                     className={filter === value ? "selected" : ""}
@@ -1004,7 +1244,7 @@ export function Dashboard({
                       <span
                         className={`record-state record-state-${item.status}`}
                       >
-                        {recordStatusLabels[item.status] || item.dueLabel}
+                        {recordStatusLabels[item.quoteStatus || item.status] || item.dueLabel}
                       </span>
                       <ChevronRight size={19} />
                     </span>
@@ -1032,6 +1272,10 @@ export function Dashboard({
                         ? "Archief is leeg"
                         : filter === "sent"
                           ? "Nog niets verzonden"
+                          : filter === "viewed"
+                            ? "Nog geen bekeken offertes"
+                            : filter === "signed"
+                              ? "Nog geen getekende offertes"
                           : "Alles bijgewerkt"}
                     </strong>
                     <span>Geen dossiers gevonden in deze rubriek.</span>
@@ -1397,7 +1641,7 @@ export function Dashboard({
                     <div className="quote-lines-heading">
                       <div>
                         <strong>Offerteregels</strong>
-                        <span>Hoeveelheden, prijzen en btw per onderdeel.</span>
+                        <span>Vul bij Bedrag excl. gewoon de totaalprijs per onderdeel in. Btw en eindtotaal berekenen automatisch mee.</span>
                       </div>
                       <button onClick={addQuoteLine}>
                         <Plus size={15} />
@@ -1410,7 +1654,8 @@ export function Dashboard({
                         <span>Omschrijving</span>
                         <span>Aantal</span>
                         <span>Eenheid</span>
-                        <span>Prijs excl.</span>
+                        <span>Prijs/stuk excl.</span>
+                        <span>Bedrag excl.</span>
                         <span>Btw</span>
                         <span>Totaal</span>
                         <span />
@@ -1455,19 +1700,45 @@ export function Dashboard({
                           />
                           <input
                             aria-label="Prijs exclusief btw"
-                            type="number"
-                            min="0"
-                            step="0.01"
-                            value={(line.unitPriceCents / 100).toFixed(2)}
+                            className="quote-money-input"
+                            inputMode="decimal"
+                            placeholder="0"
+                            value={
+                              quoteInputValues[`${line.id}:unitPrice`] ??
+                              (line.unitPriceCents
+                                ? String(line.unitPriceCents / 100)
+                                : "")
+                            }
                             onChange={(event) =>
-                              updateQuoteLine(
+                              updateQuoteMoneyInput(
                                 line.id,
-                                "unitPriceCents",
-                                Math.round(
-                                  (Number(event.target.value) || 0) * 100,
-                                ),
+                                "unitPrice",
+                                event.target.value,
                               )
                             }
+                            onBlur={() => commitQuoteMoneyInput(line.id, "unitPrice")}
+                          />
+                          <input
+                            aria-label="Bedrag exclusief btw voor deze regel"
+                            className="quote-money-input quote-line-total-input"
+                            inputMode="decimal"
+                            placeholder="0"
+                            value={
+                              quoteInputValues[`${line.id}:lineTotal`] ??
+                              (line.quantity * line.unitPriceCents
+                                ? String(
+                                    (line.quantity * line.unitPriceCents) / 100,
+                                  )
+                                : "")
+                            }
+                            onChange={(event) =>
+                              updateQuoteMoneyInput(
+                                line.id,
+                                "lineTotal",
+                                event.target.value,
+                              )
+                            }
+                            onBlur={() => commitQuoteMoneyInput(line.id, "lineTotal")}
                           />
                           <select
                             aria-label="Btw-tarief"
@@ -1679,12 +1950,25 @@ export function Dashboard({
                   Definitief verwijderen
                 </button>
               </div>
-            ) : ["sent", "approved"].includes(selected.status) ? (
+            ) : ["sent", "approved", "signed"].includes(selected.status) ? (
               <div className="drawer-actions completed-actions">
                 <span className="completed-message">
                   <CheckCircle2 size={17} />
-                  Dit dossier is verzonden en blijft bewaard in Verzonden.
+                  {selected.status === "signed"
+                    ? "De klant heeft deze offerte ondertekend."
+                    : "Dit dossier is verzonden en blijft bewaard in Verzonden."}
                 </span>
+                {selected.status === "signed" && (
+                  <a
+                    className="secondary-button"
+                    href={`/api/work-items/${selected.id}/signed-quote`}
+                    target="_blank"
+                    rel="noreferrer"
+                  >
+                    <Download size={16} />
+                    Ondertekende PDF
+                  </a>
+                )}
                 <button
                   className="secondary-button"
                   onClick={() => setSelectedId(null)}
@@ -1729,7 +2013,13 @@ export function Dashboard({
       )}
 
       {mailboxSetupOpen && (
-        <div className="mailbox-modal-backdrop" role="presentation">
+        <div
+          className="mailbox-modal-backdrop"
+          role="presentation"
+          onMouseDown={(event) => {
+            if (event.target === event.currentTarget) setMailboxSetupOpen(false);
+          }}
+        >
           <form className="mailbox-modal" onSubmit={connectOwnMailbox}>
             <div className="mailbox-modal-heading">
               <div>
@@ -1802,8 +2092,131 @@ export function Dashboard({
         </div>
       )}
 
+      {manualQuoteOpen && (
+        <div
+          className="mailbox-modal-backdrop"
+          role="presentation"
+          onMouseDown={(event) => {
+            if (event.target === event.currentTarget) setManualQuoteOpen(false);
+          }}
+        >
+          <form className="mailbox-modal manual-quote-modal" onSubmit={createManualQuote}>
+            <div className="mailbox-modal-heading">
+              <div>
+                <p className="drawer-label">HANDMATIGE OFFERTE</p>
+                <h2>Maak zelf een offerte</h2>
+              </div>
+              <button
+                type="button"
+                className="icon-button"
+                aria-label="Sluiten"
+                onClick={() => setManualQuoteOpen(false)}
+              >
+                <X size={18} />
+              </button>
+            </div>
+            <p className="mailbox-help">
+              Maak een dossier zonder e-mail. Daarna vul je de offerte, bedragen en begeleidende e-mail in voordat je ze verstuurt.
+            </p>
+            <label>
+              Naam van de klant
+              <input
+                required
+                autoFocus
+                value={manualQuoteForm.customerName}
+                onChange={(event) => setManualQuoteForm({ ...manualQuoteForm, customerName: event.target.value })}
+                placeholder="Bijvoorbeeld Jan Peeters"
+              />
+            </label>
+            <label>
+              E-mailadres van de klant
+              <input
+                required
+                type="email"
+                value={manualQuoteForm.customerEmail}
+                onChange={(event) => setManualQuoteForm({ ...manualQuoteForm, customerEmail: event.target.value })}
+                placeholder="jan@voorbeeld.be"
+              />
+            </label>
+            <div className="manual-address-fields">
+              <span>Installatieadres</span>
+              <label>
+                Straat
+                <input
+                  required
+                  value={manualQuoteForm.street}
+                  onChange={(event) => setManualQuoteForm({ ...manualQuoteForm, street: event.target.value })}
+                  placeholder="Kerkstraat"
+                />
+              </label>
+              <div className="manual-address-row">
+                <label>
+                  Nummer
+                  <input
+                    required
+                    value={manualQuoteForm.houseNumber}
+                    onChange={(event) => setManualQuoteForm({ ...manualQuoteForm, houseNumber: event.target.value })}
+                    placeholder="10"
+                  />
+                </label>
+                <label>
+                  Bus <span className="field-optional">(optioneel)</span>
+                  <input
+                    value={manualQuoteForm.box}
+                    onChange={(event) => setManualQuoteForm({ ...manualQuoteForm, box: event.target.value })}
+                    placeholder="2"
+                  />
+                </label>
+              </div>
+              <div className="manual-address-row manual-address-locality">
+                <label>
+                  Postcode
+                  <input
+                    required
+                    inputMode="numeric"
+                    value={manualQuoteForm.postalCode}
+                    onChange={(event) => setManualQuoteForm({ ...manualQuoteForm, postalCode: event.target.value })}
+                    placeholder="3200"
+                  />
+                </label>
+                <label>
+                  Gemeente
+                  <input
+                    required
+                    value={manualQuoteForm.city}
+                    onChange={(event) => setManualQuoteForm({ ...manualQuoteForm, city: event.target.value })}
+                    placeholder="Aarschot"
+                  />
+                </label>
+              </div>
+            </div>
+            <label>
+              Titel van de offerte
+              <input
+                required
+                value={manualQuoteForm.title}
+                onChange={(event) => setManualQuoteForm({ ...manualQuoteForm, title: event.target.value })}
+              />
+            </label>
+            <div className="mailbox-modal-actions">
+              <button type="button" className="secondary-button" onClick={() => setManualQuoteOpen(false)}>Annuleren</button>
+              <button type="submit" className="approve-button" disabled={busy}>
+                <FileText size={16} />
+                {busy ? "Aanmaken…" : "Offerte opmaken"}
+              </button>
+            </div>
+          </form>
+        </div>
+      )}
+
       {mailboxPickerOpen && (
-        <div className="mailbox-picker-backdrop" role="presentation">
+        <div
+          className="mailbox-picker-backdrop"
+          role="presentation"
+          onMouseDown={(event) => {
+            if (event.target === event.currentTarget) setMailboxPickerOpen(false);
+          }}
+        >
           <section className="mailbox-picker" role="dialog" aria-modal="true" aria-labelledby="mailbox-picker-title">
             <button type="button" className="icon-button mailbox-picker-close" aria-label="Sluiten" onClick={() => setMailboxPickerOpen(false)}>
               <X size={19} />
@@ -1944,6 +2357,23 @@ function createDefaultQuoteBuilder(
 function mergeQuoteBuilder(value: string | undefined, builder: QuoteBuilder) {
   const stored = parseObject(value);
   return JSON.stringify({ ...stored, builder });
+}
+
+function euroInputToCents(value: string) {
+  const compact = value.replace(/[^\d,.-]/g, "").replace(/-/g, "");
+  if (!compact) return 0;
+  const lastComma = compact.lastIndexOf(",");
+  const lastDot = compact.lastIndexOf(".");
+  const hasBothSeparators = lastComma !== -1 && lastDot !== -1;
+  const lastSeparator = Math.max(lastComma, lastDot);
+  if (!hasBothSeparators && lastSeparator !== -1 && compact.length - lastSeparator - 1 === 3) {
+    return Math.max(0, Math.round((Number(compact.replace(/[.,]/g, "")) || 0) * 100));
+  }
+  const decimalSeparator = lastComma > lastDot ? "," : ".";
+  const normalized = compact
+    .replace(decimalSeparator === "," ? /\./g : /,/g, "")
+    .replace(decimalSeparator, ".");
+  return Math.max(0, Math.round((Number(normalized) || 0) * 100));
 }
 
 function quoteEmailDraft(builder: QuoteBuilder) {

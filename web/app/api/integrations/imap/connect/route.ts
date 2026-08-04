@@ -5,6 +5,7 @@ import { getAppContext } from "../../../../../lib/context";
 import { encryptMailboxCredentials } from "../../../../../lib/mail-credentials";
 import { parseImapMailboxSettings, verifyImapMailbox } from "../../../../../lib/imap";
 import { syncImapMailbox } from "../../../../../lib/imap-sync";
+import { verifySmtpMailbox } from "../../../../../lib/smtp";
 
 /**
  * Connect a standard IMAP/SMTP mailbox (for example an Easyhost address).
@@ -20,6 +21,7 @@ export async function POST(request: Request) {
   try {
     const settings = parseImapMailboxSettings(await request.json());
     await verifyImapMailbox(settings);
+    await verifySmtpMailbox(settings);
 
     const db = getDb();
     const now = new Date().toISOString();
@@ -46,7 +48,7 @@ export async function POST(request: Request) {
     });
     const values = {
       accountEmail: settings.email,
-      status: "configured",
+      status: "connected",
       encryptedRefreshToken: existing?.encryptedRefreshToken || "",
       encryptedCredentials: storedCredentials,
       scopes: "imap smtp",
@@ -78,9 +80,27 @@ export async function POST(request: Request) {
       )[0];
     }
 
-    // Import the bounded recent mailbox window now. This lets the customer see
-    // existing unanswered mail immediately and proves the full receive path.
-    const synced = await syncImapMailbox(integration);
+    // Importing older messages is useful, but must never turn a successfully
+    // verified connection into a reported failure. Providers may briefly rate
+    // limit the second login or a single older message can be malformed. The
+    // customer can still use the explicit Sync action afterwards.
+    let synced = { processed: 0 };
+    let syncWarning: string | undefined;
+    try {
+      synced = await syncImapMailbox(integration);
+    } catch (caught) {
+      const message = caught instanceof Error ? caught.message : "Unknown IMAP sync error";
+      console.error(
+        JSON.stringify({
+          event: "imap_initial_sync_failed_after_connect",
+          organizationId: context.organization.id,
+          integrationId: integration.id,
+          error: message,
+        }),
+      );
+      syncWarning =
+        "De mailbox is gekoppeld, maar recente berichten konden nog niet worden geïmporteerd. Gebruik straks het synchronisatie-icoon om opnieuw te proberen.";
+    }
 
     return Response.json({
       ok: true,
@@ -88,9 +108,13 @@ export async function POST(request: Request) {
       accountEmail: settings.email,
       status: "connected",
       ...synced,
+      syncWarning,
     });
   } catch (caught) {
-    const message = caught instanceof Error ? caught.message : "Mailbox koppelen is niet gelukt";
+    const rawMessage = caught instanceof Error ? caught.message : "Mailbox koppelen is niet gelukt";
+    const message = /UNIQUE constraint failed: integrations\.provider, integrations\.account_email/i.test(rawMessage)
+      ? "Deze mailbox is al aan een andere Orelix-workspace gekoppeld. Ontkoppel hem daar eerst."
+      : rawMessage;
     console.error(JSON.stringify({ event: "imap_connection_failed", organizationId: context.organization.id, error: message }));
     return Response.json({ error: message }, { status: 400 });
   }

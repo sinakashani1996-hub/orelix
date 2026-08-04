@@ -55,16 +55,20 @@ const missingFieldCopy: Record<
   address: {
     summary: "Volledig installatieadres ontbreekt",
     question:
-      "Op welk adres worden de zonnepanelen geplaatst? Graag straat, huisnummer, postcode en gemeente.",
+      "Wat is het volledige installatieadres? Graag straat, huisnummer, postcode en gemeente.",
+  },
+  buildingAge: {
+    summary: "Leeftijd van de woning ontbreekt",
+    question: "Is de woning ouder dan 10 jaar? (Ja/nee)",
   },
   property: {
     summary: "Type pand ontbreekt",
     question: "Gaat het om een woning, appartement of bedrijfspand?",
   },
   usage: {
-    summary: "Verbruik of gewenst aantal panelen ontbreekt",
+    summary: "Jaarlijks elektriciteitsverbruik ontbreekt",
     question:
-      "Wat is uw jaarlijkse elektriciteitsverbruik in kWh? Als u al een gewenst aantal zonnepanelen heeft, mag u dat ook doorgeven.",
+      "Wat is uw jaarlijkse elektriciteitsverbruik in kWh? U vindt dit meestal op uw laatste jaarafrekening.",
   },
   roof: {
     summary: "Type dak ontbreekt",
@@ -72,8 +76,9 @@ const missingFieldCopy: Record<
       "Welk type dak heeft het gebouw, bijvoorbeeld een pannendak, leien dak of plat dak?",
   },
   battery: {
-    summary: "Voorkeur voor een thuisbatterij ontbreekt",
-    question: "Wilt u bij de zonnepanelen ook een thuisbatterij?",
+    summary: "Voorkeur voor thuisbatterij ontbreekt",
+    question:
+      "Wenst u een thuisbatterij in combinatie met de zonnepanelen? (Ja/nee)",
   },
   timeline: {
     summary: "Gewenste timing ontbreekt",
@@ -148,9 +153,10 @@ function analyzeEmail(
   }
 
   const fields = extractFields(text);
-  const missing = Object.entries(fields)
-    .filter(([, value]) => !value)
-    .map(([key]) => key);
+  // Keep the first intake short and useful. Property type, battery preference
+  // and desired timing can be refined later and should not block a proposal.
+  const missing = (["address", "buildingAge", "usage", "roof", "battery"] as const)
+    .filter((key) => !fields[key]);
   if (missing.length) {
     return {
       moduleId: "quote_assistant",
@@ -161,11 +167,12 @@ function analyzeEmail(
       confidence: 94,
       draft:
         `Beste ${firstName(customerName)},\n\n` +
-        "Bedankt voor uw aanvraag voor zonnepanelen. Om een gericht offertevoorstel voor te bereiden, ontvangen we graag nog de volgende informatie:\n\n" +
+        "Hartelijk dank voor uw interesse in First Client BV.\n\n" +
+        "We hebben uw aanvraag voor een offerte voor zonnepanelen goed ontvangen. Om een correcte en gepersonaliseerde offerte op te stellen, vragen we u om ons nog volgende gegevens te bezorgen:\n\n" +
         missing
           .map((key) => `• ${missingFieldCopy[key].question}`)
           .join("\n") +
-        "\n\nMet deze gegevens kunnen we uw aanvraag correct beoordelen en een passend voorstel voorbereiden.\n\nMet vriendelijke groeten,\nFirst Client BV",
+        "\n\nMet deze informatie kunnen wij uw offerte zo nauwkeurig mogelijk opmaken. Indien we bijkomende vragen hebben om uw dossier volledig te maken, nemen wij persoonlijk contact met u op.\n\nZodra de offerte naar wens is, plannen we graag een huisbezoek in om de situatie ter plaatse te bekijken en de installatie verder te bespreken.\n\nMet vriendelijke groeten,\nFirst Client BV",
     };
   }
 
@@ -174,6 +181,18 @@ function analyzeEmail(
     fields.roof,
     fields.battery,
   ].filter(Boolean);
+  const recordedDetails = [
+    `Installatieadres: ${fields.address}`,
+    fields.property && `Type pand: ${fields.property}`,
+    fields.buildingAge && `Woning ouder dan 10 jaar: ${fields.buildingAge}`,
+    `Verbruik of gewenst aantal panelen: ${fields.usage}`,
+    `Type dak: ${fields.roof}`,
+    fields.battery && `Thuisbatterij: ${fields.battery}`,
+    fields.timeline && `Gewenste timing: ${fields.timeline}`,
+  ]
+    .filter(Boolean)
+    .map((detail) => `• ${detail}`)
+    .join("\n");
   return {
     moduleId: "quote_assistant",
     kind: "quote_request",
@@ -184,12 +203,7 @@ function analyzeEmail(
     draft:
       `Beste ${firstName(customerName)},\n\n` +
       "Bedankt voor uw aanvraag voor zonnepanelen. We hebben de volgende gegevens genoteerd:\n\n" +
-      `• Installatieadres: ${fields.address}\n` +
-      `• Type pand: ${fields.property}\n` +
-      `• Verbruik of gewenst aantal panelen: ${fields.usage}\n` +
-      `• Type dak: ${fields.roof}\n` +
-      `• Thuisbatterij: ${fields.battery}\n` +
-      `• Gewenste timing: ${fields.timeline}\n\n` +
+      `${recordedDetails}\n\n` +
       "Ons team controleert nu de technische gegevens en bereidt op basis daarvan een passend offertevoorstel voor. Als we nog iets moeten verduidelijken, nemen we eerst contact met u op.\n\nMet vriendelijke groeten,\nFirst Client BV",
   };
 }
@@ -202,15 +216,15 @@ function extractFields(text: string) {
   const property =
     text.match(/\b(woning|huis|appartement|bedrijfspand|kantoor|magazijn)\b/)?.[1] ||
     "";
+  const buildingAge = extractBuildingAge(text);
   const panelCount = text.match(/\b(\d{1,3})\s*(?:zonnepanelen|panelen)\b/)?.[1];
   const usage = text.match(/([\d.,]+)\s*kwh/)?.[1];
-  const usageLabel = panelCount
-    ? `${panelCount} zonnepanelen`
-    : usage
-      ? `${usage} kWh`
-      : "";
+  const usageLabel = [
+    panelCount && `${panelCount} zonnepanelen`,
+    usage && `${usage} kWh`,
+  ].filter(Boolean).join(" · ");
   const roof =
-    text.match(/\b(pannendak|plat dak|leien|golfplaten|hellend dak)\b/)?.[1] || "";
+    text.match(/\b(pannendak|plat dak|leien dak|leiden dak|leien|golfplaten|hellend dak)\b/)?.[1] || "";
   const battery = /met.{0,30}(?:thuis)?batterij.{0,30}zonder|zonder.{0,30}met.{0,30}(?:thuis)?batterij/.test(
     text,
   )
@@ -224,7 +238,25 @@ function extractFields(text: string) {
     text.match(
       /\b(zo snel mogelijk|deze maand|volgende maand|binnen\s+\d+\s+(?:weken|maanden))\b/,
     )?.[1] || "";
-  return { address, property, usage: usageLabel, roof, battery, timeline };
+  return {
+    address,
+    buildingAge,
+    property,
+    usage: usageLabel,
+    annualUsage: usage || "",
+    panelCount: panelCount || "",
+    roof,
+    battery,
+    timeline,
+  };
+}
+
+function extractBuildingAge(value: string) {
+  const explicit = value.match(/ouder\s+dan\s+10\s+jaar\s*[:=-]?\s*(ja|nee)\b/i)?.[1];
+  if (explicit) return explicit.toLowerCase();
+  if (/\b(?:niet ouder dan 10 jaar|jonger dan 10 jaar|10 jaar of jonger)\b/i.test(value)) return "nee";
+  if (/\b(?:woning|huis|gebouw)\b.{0,30}\bouder dan 10 jaar\b/i.test(value)) return "ja";
+  return "";
 }
 
 function stripQuotedHistory(value: string) {

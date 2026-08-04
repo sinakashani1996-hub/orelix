@@ -1,6 +1,12 @@
 import { and, desc, eq } from "drizzle-orm";
 import { ensureDatabase, getDb } from "../../../db";
-import { auditEvents, integrations, modules, workItems } from "../../../db/schema";
+import {
+  auditEvents,
+  integrations,
+  modules,
+  quoteSignatures,
+  workItems,
+} from "../../../db/schema";
 import { getAppContext } from "../../../lib/context";
 import {
   ensureGmailWatch,
@@ -75,7 +81,7 @@ export async function GET() {
   await ensureDatabase();
   await ensureModuleCatalog();
   const db = getDb();
-  const [items, moduleRows, gmail, imap] = await Promise.all([
+  const [allItems, moduleRows, gmail, imap, signatureRows] = await Promise.all([
     db
       .select()
       .from(workItems)
@@ -94,12 +100,24 @@ export async function GET() {
       )
       .limit(1)
       .then((rows) => rows[0]),
+    db
+      .select()
+      .from(quoteSignatures)
+      .where(eq(quoteSignatures.organizationId, context.organization.id))
+      .orderBy(desc(quoteSignatures.sentAt)),
   ]);
-  let activeGmail = gmail;
+  // A workspace can retain old integrations, but its queue must show cases
+  // from the mailbox currently being used. The most recently linked mailbox
+  // is therefore the active one until we add an explicit mailbox switcher.
+  let activeMailbox = [gmail, imap]
+    .filter((integration): integration is NonNullable<typeof integration> => Boolean(integration))
+    .sort((left, right) => right.updatedAt.localeCompare(left.updatedAt))[0] || null;
+  let activeGmail = activeMailbox?.provider === "gmail" ? activeMailbox : null;
   let gmailNeedsReconnect = false;
-  if (gmail) {
+  if (activeGmail) {
     try {
-      activeGmail = await ensureGmailWatch(gmail);
+      activeGmail = await ensureGmailWatch(activeGmail);
+      activeMailbox = activeGmail;
     } catch (caught) {
       gmailNeedsReconnect = true;
       const message =
@@ -107,6 +125,19 @@ export async function GET() {
       console.error("Gmail watch renewal failed:", message);
     }
   }
+
+  // Historical cases are never deleted when a customer changes mailbox; they
+  // are simply kept out of the active mailbox queue.
+  const items = activeMailbox
+    ? allItems.filter(
+        (item) =>
+          // Handmatig aangemaakte offertes horen bij de workspace, niet bij
+          // een specifieke mailbox. Ze blijven daarom zichtbaar wanneer de
+          // gebruiker later van mailbox wisselt.
+          !item.mailboxIntegrationId ||
+          item.mailboxIntegrationId === activeMailbox!.id,
+      )
+    : allItems.filter((item) => !item.mailboxIntegrationId);
 
   if (activeGmail) {
     const missingSource = items
@@ -169,25 +200,127 @@ export async function GET() {
     item.draft = draft;
   }
 
+  const latestSignatures = new Map<string, (typeof signatureRows)[number]>();
+  for (const signature of signatureRows) {
+    if (!latestSignatures.has(signature.workItemId)) {
+      latestSignatures.set(signature.workItemId, signature);
+    }
+  }
+  const itemsWithQuoteStatus = items.map((item) => {
+    const signature = latestSignatures.get(item.id);
+    if (!signature || signature.status === "revoked") return item;
+    return {
+      ...item,
+      quoteStatus:
+        signature.status === "accepted"
+          ? "signed"
+          : signature.viewedAt
+            ? "viewed"
+            : "sent",
+      quoteSentAt: signature.sentAt,
+      quoteViewedAt: signature.viewedAt,
+      quoteSignedAt: signature.acceptedAt,
+    };
+  });
+
   return Response.json({
-    items,
+    items: itemsWithQuoteStatus,
     modules: moduleRows,
     user: { name: context.user.name, email: context.user.email },
     organization: context.organization,
-    integration: activeGmail || imap
+    integration: activeMailbox
       ? {
-          provider: activeGmail ? "gmail" : "imap_smtp",
+          provider: activeMailbox.provider as "gmail" | "imap_smtp",
           status: activeGmail
             ? gmailNeedsReconnect
               ? "needs_reconnect"
               : activeGmail.status
-            : imap!.status,
-          accountEmail: activeGmail?.accountEmail || imap!.accountEmail,
+            : activeMailbox.status,
+          accountEmail: activeMailbox.accountEmail,
           watchExpiration: activeGmail?.watchExpiration || null,
-          updatedAt: activeGmail?.updatedAt || imap!.updatedAt,
+          updatedAt: activeMailbox.updatedAt,
         }
       : null,
   });
+}
+
+export async function POST(request: Request) {
+  const context = await getAppContext();
+  if (!context?.organization) {
+    return Response.json({ error: "Niet aangemeld" }, { status: 401 });
+  }
+
+  const payload = (await request.json()) as {
+    customerName?: string;
+    customerEmail?: string;
+    customerAddress?: string;
+    title?: string;
+  };
+  const customerName = payload.customerName?.trim() || "";
+  const customerEmail = payload.customerEmail?.trim().toLowerCase() || "";
+  const customerAddress = payload.customerAddress?.trim() || "";
+  const title = payload.title?.trim() || "Offerte zonnepanelen";
+
+  if (!customerName || !customerEmail) {
+    return Response.json(
+      { error: "Vul minstens de naam en het e-mailadres van de klant in" },
+      { status: 400 },
+    );
+  }
+  if (!/^\S+@\S+\.\S+$/.test(customerEmail)) {
+    return Response.json({ error: "Vul een geldig e-mailadres in" }, { status: 400 });
+  }
+
+  await ensureDatabase();
+  await ensureModuleCatalog();
+  const db = getDb();
+  const now = new Date().toISOString();
+  const id = `manual_quote_${crypto.randomUUID()}`;
+  const quoteJson = JSON.stringify({
+    ready: true,
+    title,
+    introduction: `Beste ${customerName}, hierbij bezorgen wij u ons voorstel.`,
+    scope: ["Levering en installatie van zonnepanelen"],
+    assumptions: [],
+    validityDays: 30,
+  });
+  const [item] = await db
+    .insert(workItems)
+    .values({
+      id,
+      organizationId: context.organization.id,
+      moduleId: "quote_assistant",
+      customerName,
+      customerEmail,
+      title: "Handmatige offerte",
+      summary: customerAddress
+        ? `Offerte opmaken voor ${customerAddress}`
+        : "Handmatig aangemaakte offerte",
+      status: "needs_approval",
+      priority: "normal",
+      confidence: 100,
+      receivedAt: now,
+      dueLabel: "Vandaag",
+      sourceSubject: title,
+      kind: "quote_request",
+      extractedJson: JSON.stringify(
+        customerAddress ? { address: customerAddress } : {},
+      ),
+      quoteJson,
+      aiProvider: "manual",
+      updatedAt: now,
+    })
+    .returning();
+
+  await db.insert(auditEvents).values({
+    organizationId: context.organization.id,
+    workItemId: id,
+    actor: context.user.email,
+    action: "manual_quote_created",
+    details: `Handmatige offerte aangemaakt voor ${customerName}`,
+  });
+
+  return Response.json({ item }, { status: 201 });
 }
 
 export async function PATCH(request: Request) {
@@ -481,6 +614,14 @@ export async function DELETE(request: Request) {
       and(
         eq(auditEvents.workItemId, payload.id),
         eq(auditEvents.organizationId, context.organization.id),
+      ),
+    );
+  await db
+    .delete(quoteSignatures)
+    .where(
+      and(
+        eq(quoteSignatures.workItemId, payload.id),
+        eq(quoteSignatures.organizationId, context.organization.id),
       ),
     );
   await db

@@ -9,6 +9,7 @@ export type ConversationMessage = {
 
 export type ExtractedQuoteData = {
   address: string;
+  buildingOlderThan10Years: string;
   propertyType: string;
   annualUsageKwh: string;
   panelCount: string;
@@ -108,6 +109,7 @@ export function validateAnalysis(
 
   const extracted = stringRecord(item.extracted, [
     "address",
+    "buildingOlderThan10Years",
     "propertyType",
     "annualUsageKwh",
     "panelCount",

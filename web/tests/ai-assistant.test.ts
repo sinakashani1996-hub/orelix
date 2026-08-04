@@ -14,6 +14,7 @@ test("validates a structured conversational quote analysis", () => {
     draft: "Beste Isis,\n\nUw offerteconcept staat klaar.",
     extracted: {
       address: "Oude Mechelsbaan 189",
+      buildingOlderThan10Years: "ja",
       propertyType: "woning",
       annualUsageKwh: "4200",
       panelCount: "9",

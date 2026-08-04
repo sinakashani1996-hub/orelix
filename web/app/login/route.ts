@@ -4,6 +4,7 @@ import {
   getWorkOS,
   workosConfig,
 } from "../../lib/auth";
+import { appUrl } from "../../lib/app-url";
 
 export async function GET(request: Request) {
   const config = workosConfig();
@@ -13,7 +14,11 @@ export async function GET(request: Request) {
   }
 
   const state = crypto.randomUUID();
-  const redirectUri = new URL("/auth/callback", request.url).toString();
+  const redirectUri = appUrl(
+    request,
+    "/auth/callback",
+    process.env.WORKOS_REDIRECT_URI,
+  );
   const authorizationUrl = workos.userManagement.getAuthorizationUrl({
     clientId: config.clientId,
     provider: "authkit",

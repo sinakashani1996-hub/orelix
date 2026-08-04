@@ -7,8 +7,11 @@ import { decryptMailboxCredentials } from "./mail-credentials";
 
 type Integration = typeof integrations.$inferSelect;
 
-/** Pulls a bounded recent IMAP window. Deduplication happens in the shared
- * ingestion layer, so repeating this is safe and never creates duplicate work. */
+/**
+ * Pulls new IMAP messages after the stored UID cursor. The first connection
+ * imports a bounded recent window; later manual syncs are intentionally fast
+ * and do not re-download the same mailbox history.
+ */
 export async function syncImapMailbox(integration: Integration) {
   if (!integration.encryptedCredentials) {
     throw new Error("De mailboxgegevens ontbreken. Koppel de mailbox opnieuw.");
@@ -17,7 +20,11 @@ export async function syncImapMailbox(integration: Integration) {
     integration.encryptedCredentials,
   );
   const settings = parseImapMailboxSettings(credentials);
-  const messages = await fetchRecentImapMessages(settings);
+  const messages = await fetchRecentImapMessages(
+    settings,
+    undefined,
+    integration.historyId,
+  );
   let processed = 0;
   for (const message of messages) {
     processed += await ingestIncomingMailboxMessage(integration, message);

@@ -2,6 +2,7 @@ import { getDb } from "../../../../../db";
 import { oauthStates } from "../../../../../db/schema";
 import { getAppContext } from "../../../../../lib/context";
 import { GMAIL_SCOPES, gmailConfig } from "../../../../../lib/gmail";
+import { appUrl } from "../../../../../lib/app-url";
 
 export async function GET(request: Request) {
   const context = await getAppContext();
@@ -14,9 +15,11 @@ export async function GET(request: Request) {
   }
 
   const state = crypto.randomUUID();
-  const redirectUri =
-    process.env.GMAIL_REDIRECT_URI ||
-    new URL("/api/integrations/gmail/callback", request.url).toString();
+  const redirectUri = appUrl(
+    request,
+    "/api/integrations/gmail/callback",
+    process.env.GMAIL_REDIRECT_URI,
+  );
   await getDb().insert(oauthStates).values({
     state,
     organizationId: context.organization.id,

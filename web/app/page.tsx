@@ -4,9 +4,15 @@ import { Onboarding } from "./Onboarding";
 
 export const dynamic = "force-dynamic";
 
-export default async function Home() {
+type HomeProps = {
+  searchParams: Promise<{ auth?: string }>;
+};
+
+export default async function Home({ searchParams }: HomeProps) {
   const context = await getAppContext();
   if (!context) {
+    const { auth } = await searchParams;
+    const authNotice = authenticationNotice(auth);
     return (
       <main className="auth-page">
         <div className="auth-brand">
@@ -24,6 +30,7 @@ export default async function Home() {
           <a className="auth-button" href="/login">
             Inloggen of account maken
           </a>
+          {authNotice && <p className="form-error">{authNotice}</p>}
           <small>Veilig inloggen via e-mail, Google of Microsoft.</small>
         </section>
       </main>
@@ -42,4 +49,20 @@ export default async function Home() {
       userName={context.user.name}
     />
   );
+}
+
+function authenticationNotice(status?: string) {
+  if (status === "invalid-state") {
+    return "Je aanmeldsessie is verlopen. Start de aanmelding opnieuw.";
+  }
+  if (status === "failed") {
+    return "Aanmelden kon niet worden afgerond. Probeer opnieuw; blijft dit gebeuren, controleer dan de WorkOS-instellingen.";
+  }
+  if (status === "setup-required") {
+    return "Aanmelden is nog niet volledig geconfigureerd op deze omgeving. Controleer de WorkOS-variabelen en callback-URL.";
+  }
+  if (status === "session-expired") {
+    return "Je sessie is verlopen. Meld je opnieuw aan om verder te werken.";
+  }
+  return null;
 }

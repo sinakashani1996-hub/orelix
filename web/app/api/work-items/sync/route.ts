@@ -77,8 +77,17 @@ export async function POST(request: Request) {
         error: message,
       }),
     );
+    // Connection/authentication failures are already translated by the IMAP
+    // layer. Keep that useful explanation for the person using Orelix instead
+    // of replacing it with a generic "sync failed" toast.
+    const isMailboxConnectionError =
+      /mailserver|imap-server|aanmelding|wachtwoord|verbinding/i.test(message);
     return Response.json(
-      { error: "Synchroniseren van het postvak is niet gelukt. Controleer de mailboxinstellingen." },
+      {
+        error: isMailboxConnectionError
+          ? message
+          : "Synchroniseren van het postvak is niet gelukt. Probeer opnieuw of controleer de mailboxinstellingen.",
+      },
       { status: 500 },
     );
   }

@@ -11,6 +11,7 @@ import {
   type QuoteBuilder,
   type QuoteLine,
 } from "./quote-builder";
+import type { QuoteAcceptance } from "./quote-signing";
 
 const pageWidth = 595.28;
 const pageHeight = 841.89;
@@ -22,7 +23,10 @@ const muted = rgb(0.38, 0.44, 0.41);
 const lineColor = rgb(0.86, 0.89, 0.87);
 const soft = rgb(0.96, 0.98, 0.96);
 
-export async function generateQuotePdf(builder: QuoteBuilder) {
+export async function generateQuotePdf(
+  builder: QuoteBuilder,
+  acceptance?: QuoteAcceptance,
+) {
   const document = await PDFDocument.create();
   const regular = await document.embedFont(StandardFonts.Helvetica);
   const bold = await document.embedFont(StandardFonts.HelveticaBold);
@@ -34,6 +38,7 @@ export async function generateQuotePdf(builder: QuoteBuilder) {
   drawLines(context, builder.lines);
   drawTotals(context, builder);
   drawTerms(context, builder);
+  if (acceptance) await drawAcceptance(context, builder, acceptance);
   drawFooters(document.getPages(), regular, builder.quoteNumber);
 
   document.setTitle(`${builder.quoteNumber} - ${builder.customerName}`);
@@ -42,6 +47,131 @@ export async function generateQuotePdf(builder: QuoteBuilder) {
   document.setCreator("Orelix Office");
   document.setProducer("Orelix Office");
   return document.save();
+}
+
+async function drawAcceptance(
+  context: Context,
+  builder: QuoteBuilder,
+  acceptance: QuoteAcceptance,
+) {
+  const page = context.document.addPage([pageWidth, pageHeight]);
+  page.drawRectangle({
+    x: 0,
+    y: pageHeight - 150,
+    width: pageWidth,
+    height: 150,
+    color: green,
+  });
+  page.drawText("AANVAARDINGSBEWIJS", {
+    x: margin,
+    y: pageHeight - 72,
+    size: 22,
+    font: context.bold,
+    color: rgb(1, 1, 1),
+  });
+  page.drawText(`${builder.quoteNumber} - ${builder.title}`, {
+    x: margin,
+    y: pageHeight - 94,
+    size: 9,
+    font: context.regular,
+    color: mint,
+  });
+
+  page.drawRectangle({
+    x: margin,
+    y: pageHeight - 270,
+    width: pageWidth - margin * 2,
+    height: 82,
+    color: soft,
+    borderColor: lineColor,
+    borderWidth: 0.8,
+  });
+  page.drawText("DE KLANT HEEFT DEZE OFFERTE AANVAARD", {
+    x: margin + 18,
+    y: pageHeight - 220,
+    size: 10,
+    font: context.bold,
+    color: green,
+  });
+  page.drawText(
+    `Aanvaard en ondertekend door ${acceptance.signerName}. Klant: ${builder.customerName}.`,
+    {
+      x: margin + 18,
+      y: pageHeight - 242,
+      size: 9,
+      font: context.regular,
+      color: ink,
+    },
+  );
+
+  const details = [
+    ["E-mailadres", acceptance.customerEmail],
+    ["Datum en tijd", formatDateTime(acceptance.acceptedAt)],
+    ["Offertenummer", builder.quoteNumber],
+    ["Documentreferentie", acceptance.quoteHash],
+  ] as const;
+  let detailY = pageHeight - 320;
+  for (const [label, value] of details) {
+    page.drawText(label.toUpperCase(), {
+      x: margin,
+      y: detailY,
+      size: 6.8,
+      font: context.bold,
+      color: green,
+    });
+    const displayed = label === "Documentreferentie" ? value.slice(0, 32) : value;
+    page.drawText(displayed, {
+      x: margin + 118,
+      y: detailY,
+      size: 8.5,
+      font: context.regular,
+      color: ink,
+    });
+    detailY -= 29;
+  }
+
+  page.drawText("HANDTEKENING", {
+    x: margin,
+    y: pageHeight - 455,
+    size: 7,
+    font: context.bold,
+    color: green,
+  });
+  page.drawRectangle({
+    x: margin,
+    y: pageHeight - 620,
+    width: 300,
+    height: 145,
+    color: rgb(1, 1, 1),
+    borderColor: lineColor,
+    borderWidth: 0.8,
+  });
+  const signatureBytes = signatureBytesFromDataUrl(acceptance.signatureDataUrl);
+  const signature = await context.document.embedPng(signatureBytes);
+  const scale = Math.min(260 / signature.width, 105 / signature.height);
+  page.drawImage(signature, {
+    x: margin + 20,
+    y: pageHeight - 600,
+    width: signature.width * scale,
+    height: signature.height * scale,
+  });
+  page.drawText(acceptance.signerName, {
+    x: margin,
+    y: pageHeight - 640,
+    size: 9,
+    font: context.bold,
+    color: ink,
+  });
+  page.drawText(
+    "Dit bewijs hoort bij de exacte offerteversie met bovenstaande documentreferentie.",
+    {
+      x: margin,
+      y: 105,
+      size: 7.5,
+      font: context.regular,
+      color: muted,
+    },
+  );
 }
 
 type Context = {
@@ -478,6 +608,19 @@ function formatDate(value: string) {
     year: "numeric",
     timeZone: "UTC",
   }).format(new Date(`${value}T00:00:00.000Z`));
+}
+
+function formatDateTime(value: string) {
+  return new Intl.DateTimeFormat("nl-BE", {
+    dateStyle: "long",
+    timeStyle: "short",
+    timeZone: "Europe/Brussels",
+  }).format(new Date(value));
+}
+
+function signatureBytesFromDataUrl(value: string) {
+  const encoded = value.split(",")[1] || "";
+  return Uint8Array.from(atob(encoded), (character) => character.charCodeAt(0));
 }
 
 function formatQuantity(value: number) {

@@ -1,6 +1,11 @@
 import { and, eq } from "drizzle-orm";
-import { getDb } from "../../../../../db";
-import { auditEvents, integrations, workItems } from "../../../../../db/schema";
+import { ensureDatabase, getDb } from "../../../../../db";
+import {
+  auditEvents,
+  integrations,
+  quoteSignatures,
+  workItems,
+} from "../../../../../db/schema";
 import { getAppContext } from "../../../../../lib/context";
 import {
   integrationForOrganization,
@@ -12,6 +17,12 @@ import {
   quoteValidationIssues,
 } from "../../../../../lib/quote-builder";
 import { generateQuotePdf } from "../../../../../lib/quote-pdf";
+import { appUrl } from "../../../../../lib/app-url";
+import {
+  createSigningToken,
+  hashQuoteSnapshot,
+  hashSigningToken,
+} from "../../../../../lib/quote-signing";
 
 export async function POST(
   request: Request,
@@ -22,6 +33,7 @@ export async function POST(
     return Response.json({ error: "Niet aangemeld" }, { status: 401 });
   }
   const { id } = await params;
+  await ensureDatabase();
   const db = getDb();
   const item = (
     await db
@@ -81,6 +93,9 @@ export async function POST(
     | { filename: string; contentType: string; bytes: Uint8Array }
     | undefined;
   let subjectOverride: string | undefined;
+  let signingToken: string | undefined;
+  let signingRecordId: string | undefined;
+  let deliveredDraft = finalDraft;
   try {
     const storedQuote = JSON.parse(item.quoteJson) as {
       ready?: boolean;
@@ -101,6 +116,38 @@ export async function POST(
         bytes: await generateQuotePdf(builder),
       };
       subjectOverride = `${builder.quoteNumber} - ${builder.title}`;
+      signingToken = createSigningToken();
+      signingRecordId = `qsig_${crypto.randomUUID()}`;
+      const signingUrl = appUrl(
+        request,
+        `/offerte/${encodeURIComponent(signingToken)}`,
+      );
+      deliveredDraft = `${finalDraft.trim()}\n\nBekijk en onderteken uw offerte veilig via:\n${signingUrl}`;
+      const now = new Date().toISOString();
+      await db
+        .update(quoteSignatures)
+        .set({ status: "revoked", updatedAt: now })
+        .where(
+          and(
+            eq(quoteSignatures.organizationId, context.organization.id),
+            eq(quoteSignatures.workItemId, item.id),
+            eq(quoteSignatures.status, "pending"),
+          ),
+        );
+      await db.insert(quoteSignatures).values({
+        id: signingRecordId,
+        organizationId: context.organization.id,
+        workItemId: item.id,
+        tokenHash: await hashSigningToken(signingToken),
+        quoteSnapshotJson: JSON.stringify(builder),
+        quoteHash: await hashQuoteSnapshot(builder),
+        customerName: builder.customerName,
+        customerEmail: builder.customerEmail,
+        status: "pending",
+        expiresAt: `${builder.validUntil}T23:59:59.999Z`,
+        sentAt: now,
+        updatedAt: now,
+      });
     }
   } catch (caught) {
     return Response.json(
@@ -133,22 +180,41 @@ export async function POST(
     });
   }
 
-  const sent = integration.provider === "imap_smtp"
-    ? await sendSmtpWorkItemEmail(integration, {
+  let sent: { id: string; threadId: string };
+  try {
+    sent = integration.provider === "imap_smtp"
+      ? await sendSmtpWorkItemEmail(integration, {
         ...item,
-        draft: finalDraft,
+        draft: deliveredDraft,
         attachment,
         subjectOverride,
       })
-    : await sendWorkItemEmail(integration, {
-    ...item,
-    draft: finalDraft,
-    attachment,
-    subjectOverride,
-  });
+      : await sendWorkItemEmail(integration, {
+          ...item,
+          draft: deliveredDraft,
+          attachment,
+          subjectOverride,
+        });
+  } catch (caught) {
+    if (signingRecordId) {
+      await db
+        .update(quoteSignatures)
+        .set({ status: "revoked", updatedAt: new Date().toISOString() })
+        .where(eq(quoteSignatures.id, signingRecordId));
+    }
+    throw caught;
+  }
   const now = new Date().toISOString();
   const conversation = parseConversation(item.conversationJson);
-  conversation.push({ role: "assistant", body: finalDraft, at: now });
+  // Never persist the bearer signing token in the dossier. The customer gets
+  // it by e-mail; Orelix stores only its SHA-256 hash.
+  conversation.push({
+    role: "assistant",
+    body: signingRecordId
+      ? `${finalDraft.trim()}\n\n[Beveiligde offertelink verzonden]`
+      : finalDraft,
+    at: now,
+  });
   await db
     .update(workItems)
     .set({
@@ -163,10 +229,16 @@ export async function POST(
     workItemId: item.id,
     actor: context.user.email,
     action: "sent",
-    details: `E-mail ${sent.id} verzonden na expliciete goedkeuring`,
+    details: signingRecordId
+      ? `Offerte-uitnodiging ${sent.id} verzonden na expliciete goedkeuring`
+      : `E-mail ${sent.id} verzonden na expliciete goedkeuring`,
   });
 
-  return Response.json({ status: "sent", messageId: sent.id });
+  return Response.json({
+    status: "sent",
+    messageId: sent.id,
+    signatureRequested: Boolean(signingRecordId),
+  });
 }
 
 function safeFilename(value: string) {

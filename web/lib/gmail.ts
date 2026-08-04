@@ -17,6 +17,7 @@ import {
   inferCustomerName,
   type QuoteAnalysis,
 } from "./quote-analyzer";
+import { filterInboundMailboxMessage } from "./inbox-filter";
 import { normalizeGmailHistoryId, nextHistoryCursor } from "./gmail-history";
 import {
   buildGmailRawMessage,
@@ -373,12 +374,30 @@ async function processInboundMessage(
   const sender = parseMailbox(from);
   const subject = header(message, "Subject") || "(Geen onderwerp)";
   const body = extractBody(message.payload);
+  const mailboxFilter = filterInboundMailboxMessage({
+    from,
+    subject,
+    body,
+    autoSubmitted: header(message, "Auto-Submitted"),
+    listUnsubscribe: header(message, "List-Unsubscribe"),
+    precedence: header(message, "Precedence"),
+  });
+  if (mailboxFilter.action === "ignore") {
+    console.info(JSON.stringify({
+      event: "inbound_message_ignored",
+      provider: "gmail",
+      messageId,
+      reason: mailboxFilter.reason,
+    }));
+    return 0;
+  }
   const [threadItem] = await db
     .select()
     .from(workItems)
     .where(
       and(
         eq(workItems.organizationId, integration.organizationId),
+        eq(workItems.mailboxIntegrationId, integration.id),
         eq(workItems.providerThreadId, threadId),
       ),
     )
@@ -392,6 +411,7 @@ async function processInboundMessage(
         .where(
           and(
             eq(workItems.organizationId, integration.organizationId),
+            eq(workItems.mailboxIntegrationId, integration.id),
             eq(workItems.customerEmail, sender.email),
           ),
         )
@@ -471,6 +491,7 @@ async function processInboundMessage(
     draft: analysis.draft,
     providerMessageId: messageId,
     providerThreadId: threadId,
+    mailboxIntegrationId: integration.id,
     sourceSubject: subject,
     sourceBody: body,
     kind: analysis.kind,

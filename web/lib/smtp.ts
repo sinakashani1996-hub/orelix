@@ -6,6 +6,39 @@ import { integrations } from "../db/schema";
 
 type Integration = typeof integrations.$inferSelect;
 
+/**
+ * Checks the outbound half of an IMAP/SMTP connection before Orelix stores
+ * anything. Without this check a mailbox could look connected yet fail only
+ * when a customer reply is approved.
+ */
+export async function verifySmtpMailbox(
+  settings: ReturnType<typeof parseImapMailboxSettings>,
+) {
+  const client = await openSmtp(settings.smtpHost, settings.smtpPort);
+  try {
+    await client.expect("220");
+    await client.command("EHLO orelix-office.local", "250");
+    if (settings.smtpPort === 587) {
+      await client.command("STARTTLS", "220");
+      await client.startTls();
+      await client.command("EHLO orelix-office.local", "250");
+    }
+    await client.command("AUTH LOGIN", "334");
+    await client.command(base64(settings.email), "334");
+    await client.command(base64(settings.password), "235");
+  } catch (caught) {
+    const message = caught instanceof Error ? caught.message : "";
+    if (/SMTP-server weigerde de verzending|SMTP-server sloot/i.test(message)) {
+      throw new Error(
+        "Aanmelden bij de uitgaande mailserver is geweigerd. Controleer SMTP-server, poort en mailboxwachtwoord.",
+      );
+    }
+    throw caught;
+  } finally {
+    await client.close();
+  }
+}
+
 /** Sends an approved draft from a standard SMTP mailbox over implicit TLS (465)
  * or STARTTLS (587). The mailbox password is decrypted only for this request. */
 export async function sendSmtpWorkItemEmail(

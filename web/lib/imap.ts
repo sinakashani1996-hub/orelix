@@ -1,4 +1,5 @@
 import { connect } from "cloudflare:sockets";
+import { imapSearchCommand } from "./imap-cursor";
 
 export type ImapMailboxSettings = {
   email: string;
@@ -46,7 +47,11 @@ export function parseImapMailboxSettings(value: unknown): ImapMailboxSettings {
 export async function verifyImapMailbox(settings: ImapMailboxSettings) {
   const session = await openImap(settings);
   try {
-    await session.command("A001", `LOGIN ${quote(settings.email)} ${quote(settings.password)}`);
+    await session.command(
+      "A001",
+      `LOGIN ${quote(settings.email)} ${quote(settings.password)}`,
+      "aanmelden",
+    );
   } finally {
     await session.close();
   }
@@ -60,19 +65,32 @@ export async function verifyImapMailbox(settings: ImapMailboxSettings) {
 export async function fetchRecentImapMessages(
   settings: ImapMailboxSettings,
   limit = MAX_RECENT_MESSAGES,
+  afterUid?: string | null,
 ): Promise<ImapInboundMessage[]> {
   const session = await openImap(settings);
   try {
-    await session.command("A001", `LOGIN ${quote(settings.email)} ${quote(settings.password)}`);
-    await session.command("A002", "SELECT INBOX");
-    const search = await session.command("A003", "UID SEARCH ALL");
+    await session.command(
+      "A001",
+      `LOGIN ${quote(settings.email)} ${quote(settings.password)}`,
+      "aanmelden",
+    );
+    await session.command("A002", "SELECT INBOX", "INBOX openen");
+    const search = await session.command(
+      "A003",
+      imapSearchCommand(afterUid),
+      "nieuwe e-mails zoeken",
+    );
     const uids = collectUids(search.lines).slice(-Math.min(limit, MAX_RECENT_MESSAGES));
     const messages: ImapInboundMessage[] = [];
     for (let index = 0; index < uids.length; index += 1) {
       const tag = `F${String(index + 1).padStart(3, "0")}`;
       const fetched = await session.command(
         tag,
-        `UID FETCH ${uids[index]} (UID RFC822<0.${MAX_MESSAGE_BYTES}>)`,
+        // BODY.PEEK is the portable, read-only FETCH form. The older RFC822
+        // partial request is refused by some hosted IMAP servers, including
+        // mailprotect, even though login and INBOX selection succeed.
+        `UID FETCH ${uids[index]} (UID BODY.PEEK[]<0.${MAX_MESSAGE_BYTES}>)`,
+        "een e-mail ophalen",
       );
       const raw = fetched.literals.join("");
       if (!raw) continue;
@@ -84,6 +102,7 @@ export async function fetchRecentImapMessages(
     await session.close();
   }
 }
+
 
 export function parseRawEmail(raw: string, uid: string): ImapInboundMessage | null {
   const separator = raw.search(/\r?\n\r?\n/);
@@ -119,17 +138,30 @@ async function openImap(settings: ImapMailboxSettings) {
     throw new Error("De IMAP-server accepteerde de verbinding niet");
   }
   return {
-    async command(tag: string, command: string) {
+    async command(tag: string, command: string, operation = "de mailbox gebruiken") {
       await writer.write(new TextEncoder().encode(`${tag} ${command}\r\n`));
       const response = await reader.readUntil(tag);
       if (!/\bOK\b/i.test(response.tagged)) {
-        throw new Error(imapFailureMessage(response.tagged));
+        console.error(
+          JSON.stringify({
+            event: "imap_command_failed",
+            operation,
+            // Server replies contain useful diagnostic codes, but never the
+            // command itself (which could contain the mailbox password).
+            response: response.tagged.slice(0, 500),
+          }),
+        );
+        throw new Error(imapFailureMessage(response.tagged, operation));
       }
       return response;
     },
     async close() {
       try {
         await writer.write(new TextEncoder().encode("ZZZ LOGOUT\r\n"));
+        // Wait for the server's tagged completion before closing the socket.
+        // Some hosted IMAP servers temporarily reject a new login when the
+        // previous session is merely dropped instead of logged out cleanly.
+        await reader.readUntil("ZZZ");
       } catch {
         // The connection may already have been closed by the server.
       }
@@ -321,14 +353,14 @@ function escapeRegExp(value: string) {
   return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }
 
-function imapFailureMessage(response: string) {
+function imapFailureMessage(response: string, operation: string) {
   if (/AUTHENTICATIONFAILED|AUTHENTICATE failed|invalid credentials|login failed/i.test(response)) {
     return "Aanmelden bij de mailbox is geweigerd. Controleer het e-mailadres en het mailboxwachtwoord van je mailprovider (niet je Orelix-wachtwoord).";
   }
   if (/too many|rate limit|temporarily unavailable/i.test(response)) {
     return "De mailserver is tijdelijk niet beschikbaar. Wacht even en probeer opnieuw.";
   }
-  return "De mailserver weigerde de aanmelding. Controleer IMAP-server, poort en mailboxwachtwoord bij je provider.";
+  return `De mailserver kon ${operation} niet uitvoeren. Controleer de mailboxinstellingen of probeer het over een minuut opnieuw.`;
 }
 
 function fromBase64(value: string) {

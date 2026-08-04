@@ -9,6 +9,7 @@ import {
   normalizeGmailHistoryId,
   registerGmailWatch,
 } from "../../../../../lib/gmail";
+import { appUrl } from "../../../../../lib/app-url";
 
 export async function GET(request: Request) {
   const url = new URL(request.url);
@@ -38,9 +39,11 @@ export async function GET(request: Request) {
   }
 
   try {
-    const redirectUri =
-      process.env.GMAIL_REDIRECT_URI ||
-      new URL("/api/integrations/gmail/callback", request.url).toString();
+    const redirectUri = appUrl(
+      request,
+      "/api/integrations/gmail/callback",
+      process.env.GMAIL_REDIRECT_URI,
+    );
     const token = await exchangeGoogleCode(code, redirectUri);
     const profile = await getGmailProfile(token.access_token);
     const existing = (

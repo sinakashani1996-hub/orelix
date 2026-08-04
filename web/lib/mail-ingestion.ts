@@ -13,6 +13,7 @@ import {
   inferCustomerName,
   type QuoteAnalysis,
 } from "./quote-analyzer";
+import { filterInboundMailboxMessage } from "./inbox-filter";
 
 type Integration = typeof integrations.$inferSelect;
 
@@ -56,6 +57,20 @@ export async function ingestIncomingMailboxMessage(
   const subject = message.subject || "(Geen onderwerp)";
   const body = message.body.trim();
   if (!body) return 0;
+  const mailboxFilter = filterInboundMailboxMessage({
+    from: message.from,
+    subject,
+    body,
+  });
+  if (mailboxFilter.action === "ignore") {
+    console.info(JSON.stringify({
+      event: "inbound_message_ignored",
+      provider: "imap_smtp",
+      messageId: message.id,
+      reason: mailboxFilter.reason,
+    }));
+    return 0;
+  }
 
   const [threadItem] = await db
     .select()
@@ -63,6 +78,7 @@ export async function ingestIncomingMailboxMessage(
     .where(
       and(
         eq(workItems.organizationId, integration.organizationId),
+        eq(workItems.mailboxIntegrationId, integration.id),
         eq(workItems.providerThreadId, message.threadId),
       ),
     )
@@ -76,6 +92,7 @@ export async function ingestIncomingMailboxMessage(
         .where(
           and(
             eq(workItems.organizationId, integration.organizationId),
+            eq(workItems.mailboxIntegrationId, integration.id),
             eq(workItems.customerEmail, sender.email),
           ),
         )
@@ -147,6 +164,7 @@ export async function ingestIncomingMailboxMessage(
     draft: analysis.draft,
     providerMessageId: message.id,
     providerThreadId: message.threadId,
+    mailboxIntegrationId: integration.id,
     sourceSubject: subject,
     sourceBody: body,
     kind: analysis.kind,

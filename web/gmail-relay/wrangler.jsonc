@@ -9,7 +9,7 @@
     "binding": "AI"
   },
   "vars": {
-    "TARGET_URL": "https://orelix-office-alpha.infocura-3460.chatgpt.site/api/webhooks/gmail"
+    "TARGET_URL": "https://app.orelix.be/api/webhooks/gmail"
   },
   "observability": {
     "enabled": true,

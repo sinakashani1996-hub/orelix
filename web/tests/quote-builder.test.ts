@@ -93,3 +93,22 @@ test("generates a readable PDF and Gmail attachment", async () => {
   assert.match(raw, /filename="OFF-2026-0001\.pdf"/);
   assert.match(raw, /JVBERi0/);
 });
+
+test("adds an immutable acceptance page to a signed quote", async () => {
+  const unsigned = await generateQuotePdf(completeQuote);
+  const signed = await generateQuotePdf(completeQuote, {
+    signerName: "Isis Janssens",
+    acceptedAt: "2026-07-25T10:15:00.000Z",
+    customerEmail: completeQuote.customerEmail,
+    quoteHash: "a".repeat(64),
+    signatureDataUrl:
+      "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M/wHwAF/gL+X1Z8AAAAAElFTkSuQmCC",
+  });
+  const unsignedDocument = await PDFDocument.load(unsigned);
+  const signedDocument = await PDFDocument.load(signed);
+  assert.equal(
+    signedDocument.getPageCount(),
+    unsignedDocument.getPageCount() + 1,
+  );
+  assert.ok(signed.byteLength > unsigned.byteLength);
+});

@@ -23,28 +23,30 @@ test("asks only for missing quote intake information", () => {
   );
   assert.equal(result.moduleId, "quote_assistant");
   assert.equal(result.kind, "missing_information");
-  assert.match(result.draft, /straat, huisnummer, postcode en gemeente/i);
+  assert.match(result.draft, /volledige installatieadres/i);
+  assert.match(result.draft, /ouder dan 10 jaar/i);
+  assert.match(result.draft, /thuisbatterij/i);
   assert.doesNotMatch(result.draft, /aantal panelen/i);
+  assert.doesNotMatch(result.draft, /woning, appartement of bedrijfspand/i);
+  assert.doesNotMatch(result.draft, /wanneer .* installatie/i);
 });
 
-test("asks a concise battery question", () => {
+test("asks for the battery preference in the first complete intake", () => {
   const result = analyzeInboundEmail(
     "Offerte zonnepanelen",
-    "Ik wil 12 zonnepanelen voor mijn woning aan Kerkstraat 12, 2000 Antwerpen. Het is een pannendak en ik wil de installatie binnen 3 maanden.",
+    "Ik wil 12 zonnepanelen voor mijn woning aan Kerkstraat 12, 2000 Antwerpen. De woning is ouder dan 10 jaar. Het is een pannendak en ik wil de installatie binnen 3 maanden.",
     "Jan Peeters",
   );
   assert.equal(result.kind, "missing_information");
-  assert.match(result.draft, /wilt u bij de zonnepanelen ook een thuisbatterij/i);
-  assert.doesNotMatch(result.draft, /twee prijsvoorstellen/i);
-  assert.doesNotMatch(result.draft, /kies gerust/i);
-  assert.doesNotMatch(result.draft, /beide varianten/i);
+  assert.match(result.draft, /thuisbatterij/i);
   assert.doesNotMatch(result.draft, /volledige installatieadres/i);
+  assert.doesNotMatch(result.draft, /type dak/i);
 });
 
 test("creates a review item for a complete request", () => {
   const result = analyzeInboundEmail(
     "Offerte zonnepanelen",
-    "Ik wil 12 zonnepanelen voor mijn woning aan Kerkstraat 12, 2000 Antwerpen. Het is een pannendak, zonder thuisbatterij, binnen 3 maanden.",
+    "Ik wil 12 zonnepanelen voor mijn woning aan Kerkstraat 12, 2000 Antwerpen. De woning is ouder dan 10 jaar. Het is een pannendak, zonder thuisbatterij, binnen 3 maanden.",
     "Jan Peeters",
   );
   assert.equal(result.moduleId, "quote_assistant");
@@ -65,7 +67,7 @@ test("recognizes a request to order solar panels as a quote intake", () => {
   );
   assert.equal(result.moduleId, "quote_assistant");
   assert.equal(result.kind, "missing_information");
-  assert.match(result.draft, /bedankt voor uw aanvraag voor zonnepanelen/i);
+  assert.match(result.draft, /hartelijk dank voor uw interesse in first client bv/i);
   assert.match(result.draft, /^beste isis,/i);
   assert.doesNotMatch(result.draft, /^beste sina,/i);
 });
