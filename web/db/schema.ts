@@ -6,6 +6,9 @@ export const organizations = sqliteTable("organizations", {
   name: text("name").notNull(),
   slug: text("slug").notNull().unique(),
   authProviderOrganizationId: text("auth_provider_organization_id"),
+  companyAddress: text("company_address").notNull().default(""),
+  companyVatNumber: text("company_vat_number").notNull().default(""),
+  companyEmail: text("company_email").notNull().default(""),
   createdAt: text("created_at").notNull().default(sql`CURRENT_TIMESTAMP`),
   updatedAt: text("updated_at").notNull().default(sql`CURRENT_TIMESTAMP`),
 });

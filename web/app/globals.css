@@ -749,6 +749,10 @@ a {
   animation: sync-spin 0.8s linear infinite;
 }
 
+.mailbox-sync-icon .spinning {
+  animation: sync-spin 0.8s linear infinite;
+}
+
 .own-mailbox-button {
   display: inline-flex;
   align-items: center;
@@ -1030,6 +1034,20 @@ a {
   min-height: 36px;
   padding: 9px 13px;
   font-size: 12px;
+}
+
+.quote-company-source {
+  margin: -2px 0 13px;
+  color: #71807a;
+  font-size: 10px;
+  font-weight: 600;
+}
+
+.quote-parties-grid fieldset input[readonly],
+.quote-parties-grid fieldset textarea[readonly] {
+  cursor: default;
+  color: #52605b;
+  background: #f4f6f3;
 }
 
 .section-heading h2 {

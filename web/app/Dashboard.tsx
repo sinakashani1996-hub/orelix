@@ -170,10 +170,16 @@ export function Dashboard({
   displayName,
   organizationName,
   userName,
+  companyAddress,
+  companyVatNumber,
+  companyEmail,
 }: {
   displayName: string;
   organizationName: string;
   userName: string;
+  companyAddress: string;
+  companyVatNumber: string;
+  companyEmail: string;
 }) {
   const [items, setItems] = useState<WorkItem[]>([]);
   const [modules, setModules] = useState<Module[]>([]);
@@ -425,14 +431,18 @@ export function Dashboard({
         setQuoteBuilderOpen(false);
         return;
       }
-      const builder =
-        quote.builder ||
-        createDefaultQuoteBuilder(
-          selected,
-          quote,
-          organizationName,
-          integration?.accountEmail || "",
-        );
+      const company = {
+        name: organizationName,
+        address: companyAddress,
+        vatNumber: companyVatNumber,
+        email: companyEmail || integration?.accountEmail || "",
+      };
+      const finalQuote = ["sent", "viewed", "signed"].includes(selected.quoteStatus || "");
+      const builder = quote.builder
+        ? finalQuote
+          ? quote.builder
+          : applyWorkspaceCompanyDetails(quote.builder, company)
+        : createDefaultQuoteBuilder(selected, quote, company);
       setQuoteBuilder(builder);
       setQuoteSavedSnapshot(
         quote.builder ? JSON.stringify(quote.builder) : "",
@@ -445,6 +455,9 @@ export function Dashboard({
   }, [
     integration?.accountEmail,
     organizationName,
+    companyAddress,
+    companyVatNumber,
+    companyEmail,
     selected,
     selected?.quoteJson,
     selectedId,
@@ -998,6 +1011,14 @@ export function Dashboard({
             <Bell size={19} />
             <span className="notification-dot" />
           </button>
+          <button
+            type="button"
+            className="primary-button quick-quote-button"
+            onClick={() => setManualQuoteOpen(true)}
+          >
+            <Plus size={16} />
+            Nieuwe offerte
+          </button>
         </header>
 
         <div className="content-wrap">
@@ -1008,14 +1029,6 @@ export function Dashboard({
               <p>Je digitale team heeft alvast het voorwerk gedaan.</p>
             </div>
             <div className="mail-status-wrap">
-              <button
-                type="button"
-                className="primary-button quick-quote-button"
-                onClick={() => setManualQuoteOpen(true)}
-              >
-                <Plus size={16} />
-                Nieuwe offerte
-              </button>
               {integration && !gmailNeedsReconnect && (
                 <button
                   type="button"
@@ -1535,13 +1548,15 @@ export function Dashboard({
                     <div className="quote-parties-grid">
                       <fieldset>
                         <legend>Bedrijfsgegevens</legend>
+                        <p className="quote-company-source">
+                          Beheerd in Instellingen › Workspacebeheer
+                        </p>
                         <label>
                           <span>Bedrijfsnaam</span>
                           <input
                             value={quoteBuilder.companyName}
-                            onChange={(event) =>
-                              updateQuoteField("companyName", event.target.value)
-                            }
+                            readOnly
+                            aria-label="Bedrijfsnaam uit Workspacebeheer"
                           />
                         </label>
                         <label>
@@ -1549,12 +1564,8 @@ export function Dashboard({
                           <textarea
                             rows={2}
                             value={quoteBuilder.companyAddress}
-                            onChange={(event) =>
-                              updateQuoteField(
-                                "companyAddress",
-                                event.target.value,
-                              )
-                            }
+                            readOnly
+                            aria-label="Bedrijfsadres uit Workspacebeheer"
                           />
                         </label>
                         <div className="quote-inline-fields">
@@ -1563,12 +1574,8 @@ export function Dashboard({
                             <input
                               placeholder="BE 0123.456.789"
                               value={quoteBuilder.companyVatNumber}
-                              onChange={(event) =>
-                                updateQuoteField(
-                                  "companyVatNumber",
-                                  event.target.value,
-                                )
-                              }
+                              readOnly
+                              aria-label="Btw-nummer uit Workspacebeheer"
                             />
                           </label>
                           <label>
@@ -1576,12 +1583,8 @@ export function Dashboard({
                             <input
                               type="email"
                               value={quoteBuilder.companyEmail}
-                              onChange={(event) =>
-                                updateQuoteField(
-                                  "companyEmail",
-                                  event.target.value,
-                                )
-                              }
+                              readOnly
+                              aria-label="Bedrijfs-e-mail uit Workspacebeheer"
                             />
                           </label>
                         </div>
@@ -2325,8 +2328,7 @@ function parseQuoteConcept(value?: string): ParsedQuoteConcept | null {
 function createDefaultQuoteBuilder(
   item: WorkItem,
   concept: ParsedQuoteConcept,
-  organizationName: string,
-  companyEmail: string,
+  company: { name: string; address: string; vatNumber: string; email: string },
 ): QuoteBuilder {
   const issueDate = dateInputValue(new Date());
   const validUntilDate = new Date();
@@ -2342,10 +2344,10 @@ function createDefaultQuoteBuilder(
     quoteNumber: `OFF-${issueDate.slice(0, 4)}-${item.id.replace(/\W/g, "").slice(-6).toUpperCase()}`,
     issueDate,
     validUntil: dateInputValue(validUntilDate),
-    companyName: organizationName,
-    companyAddress: "",
-    companyVatNumber: "",
-    companyEmail,
+    companyName: company.name,
+    companyAddress: company.address,
+    companyVatNumber: company.vatNumber,
+    companyEmail: company.email,
     customerName: item.customerName,
     customerEmail: item.customerEmail,
     customerAddress:
@@ -2365,6 +2367,19 @@ function createDefaultQuoteBuilder(
     notes: concept.assumptions.join("\n"),
     paymentTerms:
       "Betaling volgens de overeengekomen voorwaarden. De planning wordt na aanvaarding in overleg vastgelegd.",
+  };
+}
+
+function applyWorkspaceCompanyDetails(
+  builder: QuoteBuilder,
+  company: { name: string; address: string; vatNumber: string; email: string },
+): QuoteBuilder {
+  return {
+    ...builder,
+    companyName: company.name,
+    companyAddress: company.address,
+    companyVatNumber: company.vatNumber,
+    companyEmail: company.email,
   };
 }
 

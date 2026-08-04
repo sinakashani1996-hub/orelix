@@ -10,6 +10,7 @@ import {
     ChevronRight,
     CircleHelp,
     FileText,
+    RefreshCw,
     Inbox,
     LayoutDashboard,
     LogOut,
@@ -208,6 +209,7 @@ export function Planning({
 
     const [calendarConnected, setCalendarConnected] = useState(false);
     const [calendarEmail, setCalendarEmail] = useState("");
+    const [calendarRefreshing, setCalendarRefreshing] = useState(false);
     const [busy, setBusy] = useState(false);
     const [events, setEvents] = useState<Event[]>(initialMockEvents);
     const [toast, setToast] = useState("");
@@ -238,38 +240,7 @@ export function Planning({
     const selectedEvent = events.find((evt) => evt.id === selectedEventId) ?? null;
 
     useEffect(() => {
-        let cancelled = false;
-        async function loadCalendar() {
-            try {
-                const response = await fetch("/api/integrations/google-calendar?events=upcoming");
-                if (response.status === 401) {
-                    window.location.assign("/?auth=session-expired");
-                    return;
-                }
-                const data = await response.json() as {
-                    connected?: boolean;
-                    accountEmail?: string;
-                    events?: GoogleCalendarApiEvent[];
-                };
-                if (cancelled) return;
-                setCalendarConnected(Boolean(data.connected));
-                setCalendarEmail(data.accountEmail || "");
-                if (data.connected && data.events?.length) {
-                    const calendarEvents = data.events
-                        .map(calendarEventToPlanningEvent)
-                        .filter((event): event is Event => Boolean(event));
-                    setEvents((current) => [
-                        ...current.filter((event) => !event.id.startsWith("google_")),
-                        ...calendarEvents,
-                    ]);
-                }
-            } catch {
-                // The planner remains usable with its existing Orelix tasks
-                // when Google Agenda is temporarily unavailable.
-            }
-        }
-        void loadCalendar();
-        return () => { cancelled = true; };
+        void refreshCalendar();
     }, []);
 
     useEffect(() => {
@@ -370,6 +341,37 @@ export function Planning({
             setNewLocation(parts.join(",").trim());
         } else { setNewLocation(cityAndCountry); }
         setShowCitySuggestions(false);
+    }
+
+    async function refreshCalendar(showFeedback = false) {
+        setCalendarRefreshing(true);
+        try {
+            const response = await fetch("/api/integrations/google-calendar?events=upcoming");
+            if (response.status === 401) {
+                window.location.assign("/?auth=session-expired");
+                return;
+            }
+            if (!response.ok) throw new Error("Agenda laden is niet gelukt");
+            const data = await response.json() as {
+                connected?: boolean;
+                accountEmail?: string;
+                events?: GoogleCalendarApiEvent[];
+            };
+            setCalendarConnected(Boolean(data.connected));
+            setCalendarEmail(data.accountEmail || "");
+            const calendarEvents = data.connected
+                ? (data.events || []).map(calendarEventToPlanningEvent).filter((event): event is Event => Boolean(event))
+                : [];
+            setEvents((current) => [
+                ...current.filter((event) => !event.id.startsWith("google_")),
+                ...calendarEvents,
+            ]);
+            if (showFeedback) showToast("Google Agenda is gesynchroniseerd");
+        } catch {
+            if (showFeedback) showToast("Google Agenda kon niet worden gesynchroniseerd. Probeer opnieuw.");
+        } finally {
+            setCalendarRefreshing(false);
+        }
     }
 
     async function toggleCalendarConnection() {
@@ -644,9 +646,7 @@ export function Planning({
         .approve-button { flex: 2; padding: 12px; border-radius: 10px; font-weight: 600; font-size: 13px; background: var(--mint-deep); color: white; border: none; text-align: center; cursor: pointer; display: flex; justify-content: center; gap: 8px; }
 
         .mobile-bottom-nav { display: none; }
-        .header-add-btn, .header-quote-btn { white-space: nowrap; }
-        .header-quote-btn { display: flex; height: 39px; align-items: center; justify-content: center; gap: 8px; padding: 0 15px; border: 1px solid var(--line); border-radius: 9px; color: var(--ink); background: var(--paper); font-size: 12px; font-weight: 700; text-decoration: none; }
-        .header-quote-btn:hover { border-color: var(--mint-deep); color: var(--mint-deep); }
+        .header-add-btn { white-space: nowrap; }
 
         @media (max-width: 1024px) {
           .structured-event { grid-template-columns: 90px 1fr 130px 110px 24px; }
@@ -658,7 +658,7 @@ export function Planning({
           .main-content { margin-left: 0; padding-bottom: 90px !important; }
           .topbar { padding: 0 16px; }
           .content-wrap { padding-top: 20px; width: calc(100% - 32px); }
-          .header-add-btn, .header-quote-btn { display: none !important; }
+          .header-add-btn { display: none !important; }
 
           .mobile-bottom-nav { display: flex; position: fixed; bottom: 0; left: 0; right: 0; height: 70px; background: var(--paper); border-top: 1px solid var(--line); justify-content: space-around; align-items: center; z-index: 90; padding-bottom: env(safe-area-inset-bottom); }
           .mobile-nav-item { display: flex; flex-direction: column; align-items: center; gap: 4px; color: var(--muted); text-decoration: none; font-size: 10px; font-weight: 600; flex: 1; }
@@ -732,9 +732,6 @@ export function Planning({
                         <kbd>⌘ K</kbd>
                     </label>
                     <button className="icon-button"><Bell size={19} /></button>
-                    <a className="header-quote-btn" href="/?newQuote=true">
-                        <FileText size={17} /> Nieuwe offerte
-                    </a>
                     <button className="primary-button header-add-btn" onClick={() => setIsFabOpen(true)}>
                         <Plus size={17} /> Nieuwe afspraak
                     </button>
@@ -748,6 +745,18 @@ export function Planning({
                             <p style={{ fontSize: '13px', maxWidth: '500px', lineHeight: '1.5' }}>Een strak overzicht van alle taken. Koppel de agenda om dubbele boekingen te voorkomen en het team efficiënt aan te sturen.</p>
                         </div>
                         <div className="mail-status-wrap" style={{ alignSelf: 'center' }}>
+                            {calendarConnected && (
+                                <button
+                                    type="button"
+                                    className="mailbox-sync-icon"
+                                    disabled={busy || calendarRefreshing}
+                                    onClick={() => void refreshCalendar(true)}
+                                    title="Agenda synchroniseren"
+                                    aria-label="Agenda synchroniseren"
+                                >
+                                    <RefreshCw size={18} className={calendarRefreshing ? "spinning" : ""} />
+                                </button>
+                            )}
                             <button className={`mail-status ${calendarConnected ? "connected" : "disconnected"}`} onClick={toggleCalendarConnection} disabled={busy === true} style={{ cursor: busy ? "wait" : "pointer", textAlign: "left", padding: '12px 16px', borderRadius: '12px', minWidth: '220px' }}>
                                 <span className="gmail-mark" style={{ width: '32px', height: '32px' }}><Calendar size={16} /></span>
                                 <span>

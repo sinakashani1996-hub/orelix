@@ -27,15 +27,24 @@ export function SettingsPage({
                                  displayName: initialDisplayName,
                                  organizationName: initialOrgName,
                                  userName: initialUserName,
+                                 companyAddress: initialCompanyAddress,
+                                 companyVatNumber: initialCompanyVatNumber,
+                                 companyEmail: initialCompanyEmail,
                              }: {
     displayName: string;
     organizationName: string;
     userName: string;
+    companyAddress: string;
+    companyVatNumber: string;
+    companyEmail: string;
 }) {
     const [localUserName, setLocalUserName] = useState(initialUserName);
     const [localOrgName, setLocalOrgName] = useState(initialOrgName);
     const [localDisplayName, setLocalDisplayName] = useState(initialDisplayName);
     const [localEmail, setLocalEmail] = useState("info@orelix-office.com");
+    const [localCompanyAddress, setLocalCompanyAddress] = useState(initialCompanyAddress);
+    const [localCompanyVatNumber, setLocalCompanyVatNumber] = useState(initialCompanyVatNumber);
+    const [localCompanyEmail, setLocalCompanyEmail] = useState(initialCompanyEmail);
 
     const [activeTab, setActiveTab] = useState<"profiel" | "workspace" | "weergave" | "integraties">("weergave");
     const [busy, setBusy] = useState<string | null>(null);
@@ -45,8 +54,9 @@ export function SettingsPage({
     const [formUserName, setFormUserName] = useState(localUserName);
     const [formEmail, setFormEmail] = useState(localEmail);
     const [formOrgName, setFormOrgName] = useState(localOrgName);
-    const [formVat, setFormVat] = useState("BE 0123.456.789");
-    const [formAddress, setFormAddress] = useState("Dorpsstraat 1, 1000 Brussel");
+    const [formVat, setFormVat] = useState(initialCompanyVatNumber);
+    const [formAddress, setFormAddress] = useState(initialCompanyAddress);
+    const [formCompanyEmail, setFormCompanyEmail] = useState(initialCompanyEmail);
 
     const [isDarkMode, setIsDarkMode] = useState(false);
     const [activeColorId, setActiveColorId] = useState("mint");
@@ -81,6 +91,33 @@ export function SettingsPage({
         action();
         setBusy(null);
         showToast(successMsg);
+    }
+
+    async function saveWorkspace() {
+        setBusy('workspace');
+        try {
+            const response = await fetch('/api/organizations', {
+                method: 'PATCH',
+                headers: { 'content-type': 'application/json' },
+                body: JSON.stringify({
+                    name: formOrgName,
+                    companyAddress: formAddress,
+                    companyVatNumber: formVat,
+                    companyEmail: formCompanyEmail,
+                }),
+            });
+            const data = await response.json() as { error?: string };
+            if (!response.ok) throw new Error(data.error || 'Opslaan is niet gelukt');
+            setLocalOrgName(formOrgName.trim());
+            setLocalCompanyAddress(formAddress.trim());
+            setLocalCompanyVatNumber(formVat.trim());
+            setLocalCompanyEmail(formCompanyEmail.trim());
+            showToast('Workspace en offertegegevens opgeslagen');
+        } catch (error) {
+            showToast(error instanceof Error ? error.message : 'Opslaan is niet gelukt');
+        } finally {
+            setBusy(null);
+        }
     }
 
     const q = searchQuery.toLowerCase();
@@ -414,7 +451,7 @@ export function SettingsPage({
                                         </div>
                                     )}
                                     <div className="setting-block">
-                                        <form className="setting-card-inner" onSubmit={(e) => { e.preventDefault(); saveField('workspace', () => setLocalOrgName(formOrgName), "Workspace succesvol opgeslagen"); }}>
+                                        <form className="setting-card-inner" onSubmit={(e) => { e.preventDefault(); void saveWorkspace(); }}>
                                             <div className="input-group">
                                                 <label>Bedrijfsnaam (Workspace)</label>
                                                 <input value={formOrgName} onChange={(e) => setFormOrgName(e.target.value)} required />
@@ -422,6 +459,10 @@ export function SettingsPage({
                                             <div className="input-group">
                                                 <label>Btw-nummer</label>
                                                 <input value={formVat} onChange={(e) => setFormVat(e.target.value)} />
+                                            </div>
+                                            <div className="input-group">
+                                                <label>Algemeen e-mailadres</label>
+                                                <input type="email" value={formCompanyEmail} onChange={(e) => setFormCompanyEmail(e.target.value)} placeholder="info@jouwbedrijf.be" />
                                             </div>
                                             <div className="input-group" style={{ marginBottom: 0 }}>
                                                 <label>Hoofdkantoor Adres</label>
@@ -432,7 +473,7 @@ export function SettingsPage({
                                                 <button
                                                     type="submit"
                                                     className="btn-save"
-                                                    disabled={busy === 'workspace' || (formOrgName === localOrgName && formVat === "BE 0123.456.789" && formAddress === "Dorpsstraat 1, 1000 Brussel")}
+                                                    disabled={busy === 'workspace' || (formOrgName === localOrgName && formVat === localCompanyVatNumber && formAddress === localCompanyAddress && formCompanyEmail === localCompanyEmail)}
                                                 >
                                                     {busy === 'workspace' ? "Opslaan..." : "Wijzigingen opslaan"}
                                                 </button>

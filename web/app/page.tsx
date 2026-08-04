@@ -47,6 +47,9 @@ export default async function Home({ searchParams }: HomeProps) {
       displayName={displayName}
       organizationName={context.organization.name}
       userName={context.user.name}
+      companyAddress={context.organization.companyAddress}
+      companyVatNumber={context.organization.companyVatNumber}
+      companyEmail={context.organization.companyEmail}
     />
   );
 }

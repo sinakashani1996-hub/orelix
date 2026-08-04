@@ -24,6 +24,9 @@ export async function ensureDatabase() {
         name TEXT NOT NULL,
         slug TEXT NOT NULL UNIQUE,
         auth_provider_organization_id TEXT,
+        company_address TEXT NOT NULL DEFAULT '',
+        company_vat_number TEXT NOT NULL DEFAULT '',
+        company_email TEXT NOT NULL DEFAULT '',
         created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
         updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
       )
@@ -231,6 +234,21 @@ export async function ensureDatabase() {
     WHERE mailbox_integration_id IS NULL
       AND provider_message_id IS NOT NULL
   `).run();
+
+  const organizationColumns = await env.DB.prepare(
+    "PRAGMA table_info(organizations)",
+  ).all<{ name: string }>();
+  const organizationAdditiveColumns = [
+    ["company_address", "TEXT NOT NULL DEFAULT ''"],
+    ["company_vat_number", "TEXT NOT NULL DEFAULT ''"],
+    ["company_email", "TEXT NOT NULL DEFAULT ''"],
+  ] as const;
+  for (const [name, definition] of organizationAdditiveColumns) {
+    if (organizationColumns.results.some((column) => column.name === name)) continue;
+    await env.DB.prepare(
+      `ALTER TABLE organizations ADD COLUMN ${name} ${definition}`,
+    ).run();
+  }
 
   const integrationColumns = await env.DB.prepare(
     "PRAGMA table_info(integrations)",

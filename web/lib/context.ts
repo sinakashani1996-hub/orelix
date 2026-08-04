@@ -9,6 +9,9 @@ export type AppContext = {
     id: string;
     name: string;
     slug: string;
+    companyAddress: string;
+    companyVatNumber: string;
+    companyEmail: string;
   } | null;
   role: string | null;
 };
@@ -42,6 +45,9 @@ export async function getAppContext(): Promise<AppContext | null> {
       organizationId: organizations.id,
       organizationName: organizations.name,
       organizationSlug: organizations.slug,
+      companyAddress: organizations.companyAddress,
+      companyVatNumber: organizations.companyVatNumber,
+      companyEmail: organizations.companyEmail,
     })
     .from(members)
     .innerJoin(organizations, eq(members.organizationId, organizations.id))
@@ -58,6 +64,9 @@ export async function getAppContext(): Promise<AppContext | null> {
       id: membership[0].organizationId,
       name: membership[0].organizationName,
       slug: membership[0].organizationSlug,
+      companyAddress: membership[0].companyAddress,
+      companyVatNumber: membership[0].companyVatNumber,
+      companyEmail: membership[0].companyEmail,
     },
     role: membership[0].role,
   };

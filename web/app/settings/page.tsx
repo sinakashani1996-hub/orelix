@@ -22,6 +22,9 @@ export default async function InstellingenRoute() {
             displayName={displayName}
             organizationName={context.organization.name}
             userName={context.user.name}
+            companyAddress={context.organization.companyAddress}
+            companyVatNumber={context.organization.companyVatNumber}
+            companyEmail={context.organization.companyEmail}
         />
     );
 }
