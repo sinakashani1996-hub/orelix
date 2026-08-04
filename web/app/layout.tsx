@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import { DM_Sans, Manrope } from "next/font/google";
 import { headers } from "next/headers";
 import "./globals.css";
+import { ThemeProvider } from "../components/ThemeProvider"; // <-- NIEUW: Importeer de ThemeProvider
 
 const manrope = Manrope({
   variable: "--font-display",
@@ -21,7 +22,7 @@ export async function generateMetadata(): Promise<Metadata> {
   const image = new URL("/og.png", origin).toString();
   const title = "Orelix Office — je digitale team";
   const description =
-    "Eén slimme werkplek voor offertes, inbox, service, planning en CRM.";
+      "Eén slimme werkplek voor offertes, inbox, service, planning en CRM.";
 
   return {
     title,
@@ -45,15 +46,18 @@ export async function generateMetadata(): Promise<Metadata> {
 }
 
 export default function RootLayout({
-  children,
-}: Readonly<{
+                                     children,
+                                   }: Readonly<{
   children: React.ReactNode;
 }>) {
   return (
-    <html lang="nl">
+      <html lang="nl">
       <body className={`${manrope.variable} ${dmSans.variable}`}>
+      {/* NIEUW: Wikkel de children in de ThemeProvider voor de globale donkere modus */}
+      <ThemeProvider>
         {children}
+      </ThemeProvider>
       </body>
-    </html>
+      </html>
   );
 }
