@@ -934,7 +934,7 @@ export function Dashboard({
             Service
             <small>Bèta</small>
           </a>
-          <a className="muted" href="#planning">
+          <a className="muted" href="planning">
             <CalendarDays size={17} />
             Planning
           </a>
@@ -945,7 +945,7 @@ export function Dashboard({
         </nav>
 
         <div className="sidebar-bottom">
-          <a href="#instellingen">
+          <a href="settings">
             <Settings size={17} />
             Instellingen
           </a>
