@@ -13,6 +13,10 @@ const isCodexSeatbeltSandbox = process.env.CODEX_SANDBOX === "seatbelt";
 
 const localBindingConfig = {
   main: "./worker/index.ts",
+  // The production Worker is deployed from Git while secrets and service
+  // settings are managed in the Cloudflare dashboard. Keep those dashboard
+  // values when Wrangler publishes a new version.
+  keep_vars: true,
   compatibility_flags: ["nodejs_compat"],
   d1_databases: d1
     ? [
