@@ -388,6 +388,20 @@ export function Dashboard({
     };
   }, []);
 
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    if (params.get("newQuote") !== "true") return;
+
+    setManualQuoteOpen(true);
+    params.delete("newQuote");
+    const search = params.toString();
+    window.history.replaceState(
+      {},
+      "",
+      `${window.location.pathname}${search ? `?${search}` : ""}`,
+    );
+  }, []);
+
   const selected = items.find((item) => item.id === selectedId) ?? null;
   const selectedQuote = selected ? parseQuoteConcept(selected.quoteJson) : null;
   useEffect(() => {
@@ -924,17 +938,17 @@ export function Dashboard({
             Offerte
             <span className="status-dot" />
           </a>
-          <a href="#inbox">
+          <a className="muted" href="#inbox">
             <Inbox size={17} />
             Inbox
             <small>Bèta</small>
           </a>
-          <a href="#service">
+          <a className="muted" href="#service">
             <Wrench size={17} />
             Service
             <small>Bèta</small>
           </a>
-          <a className="muted" href="planning">
+          <a href="planning">
             <CalendarDays size={17} />
             Planning
           </a>

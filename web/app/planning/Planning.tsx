@@ -12,6 +12,7 @@ import {
     FileText,
     Inbox,
     LayoutDashboard,
+    LogOut,
     MapPin,
     MessageSquareText,
     MoreHorizontal,
@@ -61,6 +62,15 @@ type Event = {
     // Extra velden voor de ongeplande taken (Laag 1)
     originalRequest?: string;
     preferredDays?: string;
+};
+
+type GoogleCalendarApiEvent = {
+    id: string;
+    summary?: string;
+    description?: string;
+    location?: string;
+    start?: { dateTime?: string; date?: string };
+    end?: { dateTime?: string; date?: string };
 };
 
 const initialMockEvents: Event[] = [
@@ -160,6 +170,30 @@ function initials(name: string) {
     return name.split(" ").map((part) => part[0]).join("").slice(0, 2).toUpperCase();
 }
 
+function calendarEventToPlanningEvent(event: GoogleCalendarApiEvent): Event | null {
+    const startValue = event.start?.dateTime || event.start?.date;
+    if (!startValue) return null;
+    const start = new Date(startValue);
+    if (Number.isNaN(start.getTime())) return null;
+    const endValue = event.end?.dateTime || event.end?.date;
+    const end = endValue ? new Date(endValue) : null;
+    return {
+        id: `google_${event.id}`,
+        status: "scheduled",
+        title: event.summary || "Afspraak uit Google Agenda",
+        customerName: "Google Agenda",
+        date: start.toLocaleDateString("nl-BE", { weekday: "long", day: "numeric", month: "long" }),
+        rawDate: start.toISOString().slice(0, 10),
+        startTime: event.start?.dateTime ? start.toLocaleTimeString("nl-BE", { hour: "2-digit", minute: "2-digit" }) : "Hele dag",
+        endTime: event.end?.dateTime && end && !Number.isNaN(end.getTime()) ? end.toLocaleTimeString("nl-BE", { hour: "2-digit", minute: "2-digit" }) : "",
+        location: event.location || "Geen locatie opgegeven",
+        assignee: "Google Agenda",
+        type: "survey",
+        week: "this_week",
+        notes: event.description || "",
+    };
+}
+
 export function Planning({
                              displayName,
                              organizationName,
@@ -173,6 +207,7 @@ export function Planning({
     const [filterWeek, setFilterWeek] = useState<"this_week" | "next_week" | "all">("this_week");
 
     const [calendarConnected, setCalendarConnected] = useState(false);
+    const [calendarEmail, setCalendarEmail] = useState("");
     const [busy, setBusy] = useState(false);
     const [events, setEvents] = useState<Event[]>(initialMockEvents);
     const [toast, setToast] = useState("");
@@ -201,6 +236,57 @@ export function Planning({
     const [showCitySuggestions, setShowCitySuggestions] = useState(false);
 
     const selectedEvent = events.find((evt) => evt.id === selectedEventId) ?? null;
+
+    useEffect(() => {
+        let cancelled = false;
+        async function loadCalendar() {
+            try {
+                const response = await fetch("/api/integrations/google-calendar?events=upcoming");
+                if (response.status === 401) {
+                    window.location.assign("/?auth=session-expired");
+                    return;
+                }
+                const data = await response.json() as {
+                    connected?: boolean;
+                    accountEmail?: string;
+                    events?: GoogleCalendarApiEvent[];
+                };
+                if (cancelled) return;
+                setCalendarConnected(Boolean(data.connected));
+                setCalendarEmail(data.accountEmail || "");
+                if (data.connected && data.events?.length) {
+                    const calendarEvents = data.events
+                        .map(calendarEventToPlanningEvent)
+                        .filter((event): event is Event => Boolean(event));
+                    setEvents((current) => [
+                        ...current.filter((event) => !event.id.startsWith("google_")),
+                        ...calendarEvents,
+                    ]);
+                }
+            } catch {
+                // The planner remains usable with its existing Orelix tasks
+                // when Google Agenda is temporarily unavailable.
+            }
+        }
+        void loadCalendar();
+        return () => { cancelled = true; };
+    }, []);
+
+    useEffect(() => {
+        const status = new URLSearchParams(window.location.search).get("calendar");
+        if (!status) return;
+        const messages: Record<string, string> = {
+            connected: "Google Agenda is gekoppeld. Je komende afspraken zijn geladen.",
+            "workspace-required": "Maak eerst een workspace voordat je Google Agenda koppelt.",
+            "setup-required": "Google Agenda is nog niet geconfigureerd door je beheerder.",
+            "account-in-use": "Deze Google Agenda is al gekoppeld aan een andere workspace.",
+            "token-exchange": "Google kon de koppeling niet afronden. Probeer opnieuw.",
+            "no-refresh-token": "Google gaf geen blijvende toegang. Koppel de agenda opnieuw.",
+            failed: "De koppeling met Google Agenda is niet gelukt.",
+        };
+        window.history.replaceState({}, "", window.location.pathname);
+        showToast(messages[status] || "De koppeling met Google Agenda is niet afgerond.");
+    }, []);
 
     // Wanneer een ongeplande taak wordt geopend, start de "AI Analyse" animatie
     useEffect(() => {
@@ -287,11 +373,26 @@ export function Planning({
     }
 
     async function toggleCalendarConnection() {
+        if (!calendarConnected) {
+            window.location.assign("/api/integrations/google-calendar/start");
+            return;
+        }
+        if (!window.confirm("Google Agenda ontkoppelen? Nieuwe afspraken worden dan niet meer gesynchroniseerd.")) {
+            return;
+        }
         setBusy(true);
-        await new Promise((resolve) => setTimeout(resolve, 800));
-        setCalendarConnected(!calendarConnected);
-        showToast(!calendarConnected ? "Google Agenda succesvol gekoppeld" : "Google Agenda ontkoppeld");
-        setBusy(false);
+        try {
+            const response = await fetch("/api/integrations/google-calendar", { method: "DELETE" });
+            if (!response.ok) throw new Error("Ontkoppelen is niet gelukt");
+            setCalendarConnected(false);
+            setCalendarEmail("");
+            setEvents((current) => current.filter((event) => !event.id.startsWith("google_")));
+            showToast("Google Agenda ontkoppeld");
+        } catch {
+            showToast("Google Agenda kon niet worden ontkoppeld. Probeer opnieuw.");
+        } finally {
+            setBusy(false);
+        }
     }
 
     // Accepteer het AI Voorstel
@@ -325,6 +426,30 @@ export function Planning({
         const displayDate = newDate ? new Date(newDate).toLocaleDateString('nl-BE', { weekday: 'long', day: 'numeric', month: 'long' }) : "Vandaag";
         const finalLocation = newLocation.trim() !== "" ? newLocation : "Kantoor / Op locatie";
         const rawDateVal = newDate || new Date().toISOString().split('T')[0];
+
+        if (calendarConnected) {
+            const startTime = newTime || "09:00";
+            const start = new Date(`${rawDateVal}T${startTime}:00`);
+            const end = new Date(start.getTime() + 90 * 60 * 1000);
+            try {
+                const response = await fetch("/api/integrations/google-calendar", {
+                    method: "POST",
+                    headers: { "content-type": "application/json" },
+                    body: JSON.stringify({
+                        title: newTitle,
+                        description: newNotes,
+                        location: finalLocation,
+                        startDateTime: start.toISOString(),
+                        endDateTime: end.toISOString(),
+                    }),
+                });
+                if (!response.ok) throw new Error("Afspraak kon niet naar Google Agenda");
+            } catch {
+                showToast("De afspraak is niet opgeslagen in Google Agenda. Controleer je koppeling.");
+                setBusy(false);
+                return;
+            }
+        }
 
         if (editingEventId) {
             setEvents(events.map(evt => evt.id === editingEventId ? {
@@ -519,7 +644,9 @@ export function Planning({
         .approve-button { flex: 2; padding: 12px; border-radius: 10px; font-weight: 600; font-size: 13px; background: var(--mint-deep); color: white; border: none; text-align: center; cursor: pointer; display: flex; justify-content: center; gap: 8px; }
 
         .mobile-bottom-nav { display: none; }
-        .header-add-btn { white-space: nowrap; }
+        .header-add-btn, .header-quote-btn { white-space: nowrap; }
+        .header-quote-btn { display: flex; height: 39px; align-items: center; justify-content: center; gap: 8px; padding: 0 15px; border: 1px solid var(--line); border-radius: 9px; color: var(--ink); background: var(--paper); font-size: 12px; font-weight: 700; text-decoration: none; }
+        .header-quote-btn:hover { border-color: var(--mint-deep); color: var(--mint-deep); }
 
         @media (max-width: 1024px) {
           .structured-event { grid-template-columns: 90px 1fr 130px 110px 24px; }
@@ -531,7 +658,7 @@ export function Planning({
           .main-content { margin-left: 0; padding-bottom: 90px !important; }
           .topbar { padding: 0 16px; }
           .content-wrap { padding-top: 20px; width: calc(100% - 32px); }
-          .header-add-btn { display: none !important; }
+          .header-add-btn, .header-quote-btn { display: none !important; }
 
           .mobile-bottom-nav { display: flex; position: fixed; bottom: 0; left: 0; right: 0; height: 70px; background: var(--paper); border-top: 1px solid var(--line); justify-content: space-around; align-items: center; z-index: 90; padding-bottom: env(safe-area-inset-bottom); }
           .mobile-nav-item { display: flex; flex-direction: column; align-items: center; gap: 4px; color: var(--muted); text-decoration: none; font-size: 10px; font-weight: 600; flex: 1; }
@@ -580,8 +707,8 @@ export function Planning({
                 <p className="nav-kicker">ASSISTENTEN</p>
                 <nav className="assistant-nav">
                     <a href="/"><FileText size={17} /> Offerte</a>
-                    <a href="/#inbox"><Inbox size={17} /> Inbox <small>Bèta</small></a>
-                    <a href="/#service"><Wrench size={17} /> Service <small>Bèta</small></a>
+                    <a className="muted" href="/#inbox"><Inbox size={17} /> Inbox <small>Bèta</small></a>
+                    <a className="muted" href="/#service"><Wrench size={17} /> Service <small>Bèta</small></a>
                     <a className="assistant-active" href="/planning"><CalendarDays size={17} /> Planning <span className="status-dot" /></a>
                     <a className="muted" href="/#crm"><Users size={17} /> CRM</a>
                 </nav>
@@ -593,6 +720,7 @@ export function Planning({
                         <span><strong>{userName}</strong><small>Administrator</small></span>
                         <MoreHorizontal size={17} />
                     </div>
+                    <a className="logout-link" href="/logout"><LogOut size={17} /> Uitloggen</a>
                 </div>
             </aside>
 
@@ -604,6 +732,9 @@ export function Planning({
                         <kbd>⌘ K</kbd>
                     </label>
                     <button className="icon-button"><Bell size={19} /></button>
+                    <a className="header-quote-btn" href="/?newQuote=true">
+                        <FileText size={17} /> Nieuwe offerte
+                    </a>
                     <button className="primary-button header-add-btn" onClick={() => setIsFabOpen(true)}>
                         <Plus size={17} /> Nieuwe afspraak
                     </button>
@@ -621,7 +752,7 @@ export function Planning({
                                 <span className="gmail-mark" style={{ width: '32px', height: '32px' }}><Calendar size={16} /></span>
                                 <span>
                   <strong style={{ fontSize: '12px' }}>{busy ? "Verwerken..." : calendarConnected ? "Agenda verbonden" : "Agenda koppelen"}</strong>
-                  <small style={{ fontSize: '10px', marginTop: '2px' }}>{calendarConnected ? "Synchronisatie is actief" : "Klik om te koppelen"}</small>
+                  <small style={{ fontSize: '10px', marginTop: '2px' }}>{calendarConnected ? (calendarEmail || "Synchronisatie is actief") : "Klik om te koppelen"}</small>
                 </span>
                                 {calendarConnected ? <CheckCircle2 size={18} color="var(--mint-deep)" /> : <ArrowRight size={18} color="var(--muted)" />}
                             </button>
