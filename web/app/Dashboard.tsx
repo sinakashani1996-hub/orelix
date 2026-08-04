@@ -217,38 +217,6 @@ export function Dashboard({
     return () => window.clearTimeout(timer);
   }, [loadWorkspace]);
 
-  // Light polling so new customer replies surface without a manual reload, even
-  // when a Gmail Pub/Sub push is delayed or dropped. Only refreshes while the
-  // tab is visible to avoid pointless background work.
-  useEffect(() => {
-    let cancelled = false;
-    let timer: number | undefined;
-    const schedule = () => {
-      window.clearTimeout(timer);
-      if (cancelled) return;
-      timer = window.setTimeout(poll, 30_000);
-    };
-    const poll = async () => {
-      if (document.visibilityState !== "visible") return schedule();
-      try {
-        await loadWorkspace();
-      } finally {
-        schedule();
-      }
-    };
-    const onVisibility = () => {
-      if (document.visibilityState === "visible") void loadWorkspace();
-      schedule();
-    };
-    document.addEventListener("visibilitychange", onVisibility);
-    schedule();
-    return () => {
-      cancelled = true;
-      window.clearTimeout(timer);
-      document.removeEventListener("visibilitychange", onVisibility);
-    };
-  }, [loadWorkspace]);
-
   async function syncInbox() {
     setBusy(true);
     setSyncingInbox(true);
@@ -278,18 +246,18 @@ export function Dashboard({
   }
 
   async function disconnectMailbox() {
-    if (integration?.provider !== "imap_smtp") return;
     if (!window.confirm("Deze mailbox ontkoppelen? Orelix verwijdert de versleutelde mailboxgegevens. Je dossiers blijven bewaard.")) {
       return;
     }
     setBusy(true);
     try {
-      const response = await fetch("/api/integrations/imap/disconnect", {
+      const response = await fetch("/api/integrations/disconnect", {
         method: "POST",
       });
       const data = await response.json();
       if (!response.ok) throw new Error(data.error || "Mailbox ontkoppelen is niet gelukt");
       setIntegration(null);
+      setMailboxMenuOpen(false);
       await loadWorkspace();
       setToast("Mailbox ontkoppeld. Je dossiers blijven bewaard.");
     } catch (caught) {
@@ -887,7 +855,7 @@ export function Dashboard({
                   {syncingInbox ? "Synchroniseren…" : "Postvak synchroniseren"}
                 </button>
               )}
-              {integration?.provider === "imap_smtp" && (
+              {integration && !gmailNeedsReconnect && (
                 <button
                   type="button"
                   className="secondary-button disconnect-mailbox-button"
