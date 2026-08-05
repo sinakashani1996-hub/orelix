@@ -30,6 +30,11 @@ export function SettingsPage({
                                  companyAddress: initialCompanyAddress,
                                  companyVatNumber: initialCompanyVatNumber,
                                  companyEmail: initialCompanyEmail,
+                                 quoteNumberMode: initialQuoteNumberMode,
+                                 quoteNumberPrefix: initialQuoteNumberPrefix,
+                                 quoteNumberNext: initialQuoteNumberNext,
+                                 quoteNumberStart: initialQuoteNumberStart,
+                                 quoteNumberResetYearly: initialQuoteNumberResetYearly,
                                  initialTab,
                              }: {
     displayName: string;
@@ -38,6 +43,11 @@ export function SettingsPage({
     companyAddress: string;
     companyVatNumber: string;
     companyEmail: string;
+    quoteNumberMode: "automatic" | "manual";
+    quoteNumberPrefix: string;
+    quoteNumberNext: number;
+    quoteNumberStart: number;
+    quoteNumberResetYearly: boolean;
     initialTab?: "workspace";
 }) {
     const [localUserName, setLocalUserName] = useState(initialUserName);
@@ -47,6 +57,11 @@ export function SettingsPage({
     const [localCompanyAddress, setLocalCompanyAddress] = useState(initialCompanyAddress);
     const [localCompanyVatNumber, setLocalCompanyVatNumber] = useState(initialCompanyVatNumber);
     const [localCompanyEmail, setLocalCompanyEmail] = useState(initialCompanyEmail);
+    const [localQuoteNumberMode, setLocalQuoteNumberMode] = useState(initialQuoteNumberMode);
+    const [localQuoteNumberPrefix, setLocalQuoteNumberPrefix] = useState(initialQuoteNumberPrefix);
+    const [localQuoteNumberNext, setLocalQuoteNumberNext] = useState(initialQuoteNumberNext);
+    const [localQuoteNumberStart, setLocalQuoteNumberStart] = useState(initialQuoteNumberStart);
+    const [localQuoteNumberResetYearly, setLocalQuoteNumberResetYearly] = useState(initialQuoteNumberResetYearly);
 
     const [activeTab, setActiveTab] = useState<"profiel" | "workspace" | "weergave" | "integraties">(initialTab ?? "weergave");
     const [busy, setBusy] = useState<string | null>(null);
@@ -59,6 +74,11 @@ export function SettingsPage({
     const [formVat, setFormVat] = useState(initialCompanyVatNumber);
     const [formAddress, setFormAddress] = useState(initialCompanyAddress);
     const [formCompanyEmail, setFormCompanyEmail] = useState(initialCompanyEmail);
+    const [formQuoteNumberMode, setFormQuoteNumberMode] = useState(initialQuoteNumberMode);
+    const [formQuoteNumberPrefix, setFormQuoteNumberPrefix] = useState(initialQuoteNumberPrefix);
+    const [formQuoteNumberNext, setFormQuoteNumberNext] = useState(initialQuoteNumberNext);
+    const [formQuoteNumberStart, setFormQuoteNumberStart] = useState(initialQuoteNumberStart);
+    const [formQuoteNumberResetYearly, setFormQuoteNumberResetYearly] = useState(initialQuoteNumberResetYearly);
 
     const [isDarkMode, setIsDarkMode] = useState(false);
     const [activeColorId, setActiveColorId] = useState("mint");
@@ -109,6 +129,11 @@ export function SettingsPage({
                     companyAddress: formAddress,
                     companyVatNumber: formVat,
                     companyEmail: formCompanyEmail,
+                    quoteNumberMode: formQuoteNumberMode,
+                    quoteNumberPrefix: formQuoteNumberPrefix,
+                    quoteNumberNext: formQuoteNumberNext,
+                    quoteNumberStart: formQuoteNumberStart,
+                    quoteNumberResetYearly: formQuoteNumberResetYearly,
                 }),
             });
             const payload = await response.text();
@@ -118,6 +143,11 @@ export function SettingsPage({
             setLocalCompanyAddress(formAddress.trim());
             setLocalCompanyVatNumber(formVat.trim());
             setLocalCompanyEmail(formCompanyEmail.trim());
+            setLocalQuoteNumberMode(formQuoteNumberMode);
+            setLocalQuoteNumberPrefix(formQuoteNumberPrefix.trim().toUpperCase() || "OFF");
+            setLocalQuoteNumberNext(formQuoteNumberNext);
+            setLocalQuoteNumberStart(formQuoteNumberStart);
+            setLocalQuoteNumberResetYearly(formQuoteNumberResetYearly);
             showToast('Workspace en offertegegevens opgeslagen');
         } catch (error) {
             showToast(
@@ -140,6 +170,16 @@ export function SettingsPage({
     const showIntegraties = q === "" ? activeTab === 'integraties' : "integraties api google workspace gmail agenda exact online yuki koppelen".includes(q);
     const isSearching = q.length > 0;
     const noResults = isSearching && !showWeergave && !showProfiel && !showWorkspace && !showIntegraties;
+    const workspaceHasChanges =
+        formOrgName.trim() !== localOrgName ||
+        formVat.trim() !== localCompanyVatNumber ||
+        formAddress.trim() !== localCompanyAddress ||
+        formCompanyEmail.trim() !== localCompanyEmail ||
+        formQuoteNumberMode !== localQuoteNumberMode
+        || formQuoteNumberPrefix.trim().toUpperCase() !== localQuoteNumberPrefix
+        || formQuoteNumberNext !== localQuoteNumberNext
+        || formQuoteNumberStart !== localQuoteNumberStart
+        || formQuoteNumberResetYearly !== localQuoteNumberResetYearly;
 
     return (
         <div className="app-shell">
@@ -184,7 +224,8 @@ export function SettingsPage({
 
         .btn-save { display: inline-flex; align-items: center; gap: 6px; padding: 8px 16px; border-radius: 8px; background: var(--ink); color: var(--canvas); font-size: 12px; font-weight: 600; border: none; cursor: pointer; }
         .btn-save:hover:not(:disabled) { box-shadow: 0 4px 12px rgba(0,0,0,0.1); }
-        .btn-save:disabled { opacity: 0.5; cursor: wait; }
+        .btn-save:disabled { opacity: 0.5; cursor: not-allowed; }
+        .btn-save.is-saving:disabled { cursor: wait; }
 
         .theme-options-wrapper { display: flex; gap: 16px; }
         .theme-card { flex: 1; display: flex; flex-direction: column; gap: 12px; padding: 16px; border: 2px solid var(--line); border-radius: 12px; background: var(--canvas); cursor: pointer; }
@@ -481,14 +522,55 @@ export function SettingsPage({
                                                 <label>Hoofdkantoor Adres</label>
                                                 <textarea rows={3} value={formAddress} onChange={(e) => setFormAddress(e.target.value)} />
                                             </div>
+                                            <div style={{ borderTop: '1px solid var(--line)', marginTop: 24, paddingTop: 24 }}>
+                                                <div style={{ marginBottom: 14 }}>
+                                                    <strong style={{ fontSize: 14, color: 'var(--ink)' }}>Offertenummers</strong>
+                                                    <p style={{ margin: '5px 0 0', color: 'var(--muted)', fontSize: 12, lineHeight: 1.5 }}>
+                                                        Bepaal hoe nieuwe offertes worden genummerd. Bestaande offertes veranderen nooit.
+                                                    </p>
+                                                </div>
+                                                <div className="input-group">
+                                                    <label>Nummering</label>
+                                                    <select value={formQuoteNumberMode} onChange={(e) => setFormQuoteNumberMode(e.target.value === 'manual' ? 'manual' : 'automatic')}>
+                                                        <option value="automatic">Automatisch opvolgend</option>
+                                                        <option value="manual">Handmatig per offerte</option>
+                                                    </select>
+                                                </div>
+                                                <div style={{ display: 'grid', gridTemplateColumns: '1fr 160px 160px', gap: 12 }}>
+                                                    <div className="input-group" style={{ marginBottom: 12 }}>
+                                                        <label>Voorvoegsel</label>
+                                                        <input value={formQuoteNumberPrefix} onChange={(e) => setFormQuoteNumberPrefix(e.target.value.toUpperCase())} maxLength={18} placeholder="OFF" />
+                                                    </div>
+                                                    <div className="input-group" style={{ marginBottom: 12 }}>
+                                                        <label>Volgend nummer</label>
+                                                        <input type="number" min={1} max={9999999} value={formQuoteNumberNext} onChange={(e) => setFormQuoteNumberNext(Math.max(1, Number(e.target.value) || 1))} />
+                                                    </div>
+                                                    <div className="input-group" style={{ marginBottom: 12 }}>
+                                                        <label>Startnummer</label>
+                                                        <input type="number" min={1} max={9999999} value={formQuoteNumberStart} onChange={(e) => setFormQuoteNumberStart(Math.max(1, Number(e.target.value) || 1))} />
+                                                    </div>
+                                                </div>
+                                                <label style={{ display: 'flex', alignItems: 'center', gap: 9, color: 'var(--ink)', fontSize: 13, cursor: 'pointer' }}>
+                                                    <input type="checkbox" checked={formQuoteNumberResetYearly} onChange={(e) => setFormQuoteNumberResetYearly(e.target.checked)} />
+                                                    Jaarlijks opnieuw beginnen vanaf dit nummer
+                                                </label>
+                                                <p style={{ margin: '8px 0 0', color: 'var(--muted)', fontSize: 12 }}>
+                                                    Voorbeeld: {formQuoteNumberPrefix.trim().toUpperCase() || 'OFF'}{formQuoteNumberResetYearly ? `-${new Date().getFullYear()}` : ''}-{String(formQuoteNumberNext || 1).padStart(4, '0')}
+                                                </p>
+                                            </div>
                                             <div className="save-footer">
                                                 <span>Wordt gebruikt voor documentgeneratie en facturatie.</span>
                                                 <button
                                                     type="submit"
-                                                    className="btn-save"
-                                                    disabled={busy === 'workspace' || (formOrgName === localOrgName && formVat === localCompanyVatNumber && formAddress === localCompanyAddress && formCompanyEmail === localCompanyEmail)}
+                                                    className={`btn-save ${busy === 'workspace' ? 'is-saving' : ''}`}
+                                                    disabled={busy === 'workspace' || !workspaceHasChanges}
+                                                    title={!workspaceHasChanges ? 'Pas eerst een bedrijfsgegeven aan om op te slaan.' : undefined}
                                                 >
-                                                    {busy === 'workspace' ? "Opslaan..." : "Wijzigingen opslaan"}
+                                                    {busy === 'workspace'
+                                                        ? "Opslaan..."
+                                                        : workspaceHasChanges
+                                                            ? "Wijzigingen opslaan"
+                                                            : "Geen wijzigingen"}
                                                 </button>
                                             </div>
                                         </form>

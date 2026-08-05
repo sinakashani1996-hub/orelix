@@ -30,6 +30,11 @@ export default async function InstellingenRoute({
             companyAddress={context.organization.companyAddress}
             companyVatNumber={context.organization.companyVatNumber}
             companyEmail={context.organization.companyEmail}
+            quoteNumberMode={context.organization.quoteNumberMode}
+            quoteNumberPrefix={context.organization.quoteNumberPrefix}
+            quoteNumberNext={context.organization.quoteNumberNext}
+            quoteNumberStart={context.organization.quoteNumberStart}
+            quoteNumberResetYearly={context.organization.quoteNumberResetYearly}
             initialTab={tab === "workspace" ? "workspace" : undefined}
         />
     );

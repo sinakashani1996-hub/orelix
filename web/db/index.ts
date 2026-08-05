@@ -27,6 +27,12 @@ export async function ensureDatabase() {
         company_address TEXT NOT NULL DEFAULT '',
         company_vat_number TEXT NOT NULL DEFAULT '',
         company_email TEXT NOT NULL DEFAULT '',
+        quote_number_mode TEXT NOT NULL DEFAULT 'automatic',
+        quote_number_prefix TEXT NOT NULL DEFAULT 'OFF',
+        quote_number_next INTEGER NOT NULL DEFAULT 1,
+        quote_number_start INTEGER NOT NULL DEFAULT 1,
+        quote_number_reset_yearly INTEGER NOT NULL DEFAULT 1,
+        quote_number_year INTEGER,
         created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
         updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
       )
@@ -242,6 +248,12 @@ export async function ensureDatabase() {
     ["company_address", "TEXT NOT NULL DEFAULT ''"],
     ["company_vat_number", "TEXT NOT NULL DEFAULT ''"],
     ["company_email", "TEXT NOT NULL DEFAULT ''"],
+    ["quote_number_mode", "TEXT NOT NULL DEFAULT 'automatic'"],
+    ["quote_number_prefix", "TEXT NOT NULL DEFAULT 'OFF'"],
+    ["quote_number_next", "INTEGER NOT NULL DEFAULT 1"],
+    ["quote_number_start", "INTEGER NOT NULL DEFAULT 1"],
+    ["quote_number_reset_yearly", "INTEGER NOT NULL DEFAULT 1"],
+    ["quote_number_year", "INTEGER"],
   ] as const;
   for (const [name, definition] of organizationAdditiveColumns) {
     if (organizationColumns.results.some((column) => column.name === name)) continue;

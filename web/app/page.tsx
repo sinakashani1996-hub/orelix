@@ -50,6 +50,14 @@ export default async function Home({ searchParams }: HomeProps) {
       companyAddress={context.organization.companyAddress}
       companyVatNumber={context.organization.companyVatNumber}
       companyEmail={context.organization.companyEmail}
+      quoteNumbering={{
+        mode: context.organization.quoteNumberMode,
+        prefix: context.organization.quoteNumberPrefix,
+        nextNumber: context.organization.quoteNumberNext,
+        startNumber: context.organization.quoteNumberStart,
+        resetYearly: context.organization.quoteNumberResetYearly,
+        year: context.organization.quoteNumberYear,
+      }}
     />
   );
 }

@@ -42,6 +42,7 @@ import {
   type QuoteBuilder,
   type QuoteLine,
 } from "../lib/quote-builder";
+import { formatQuoteNumber, type QuoteNumberingSettings } from "../lib/quote-numbering";
 
 type WorkItem = {
   id: string;
@@ -173,6 +174,7 @@ export function Dashboard({
   companyAddress,
   companyVatNumber,
   companyEmail,
+  quoteNumbering,
 }: {
   displayName: string;
   organizationName: string;
@@ -180,6 +182,7 @@ export function Dashboard({
   companyAddress: string;
   companyVatNumber: string;
   companyEmail: string;
+  quoteNumbering: QuoteNumberingSettings;
 }) {
   const [items, setItems] = useState<WorkItem[]>([]);
   const [modules, setModules] = useState<Module[]>([]);
@@ -445,7 +448,7 @@ export function Dashboard({
         ? finalQuote
           ? quote.builder
           : applyWorkspaceCompanyDetails(quote.builder, company)
-        : createDefaultQuoteBuilder(selected, quote, company);
+        : createDefaultQuoteBuilder(selected, quote, company, quoteNumbering);
       setQuoteBuilder(builder);
       setQuoteSavedSnapshot(
         quote.builder ? JSON.stringify(quote.builder) : "",
@@ -460,6 +463,7 @@ export function Dashboard({
     companyAddress,
     companyVatNumber,
     companyEmail,
+    quoteNumbering,
     selected,
     selected?.quoteJson,
     selectedId,
@@ -846,6 +850,7 @@ export function Dashboard({
       const data = (await response.json()) as {
         error?: string;
         builder?: QuoteBuilder;
+        item?: WorkItem;
       };
       if (!response.ok) throw new Error(data.error || "Offerte opslaan mislukt");
       if (!data.builder) throw new Error("De opgeslagen offerte ontbreekt");
@@ -854,7 +859,7 @@ export function Dashboard({
           item.id === selected.id
             ? {
                 ...item,
-                draft: emailDraft,
+                draft: data.item?.draft ?? emailDraft,
                 quoteJson: mergeQuoteBuilder(item.quoteJson, data.builder),
               }
             : item,
@@ -862,7 +867,7 @@ export function Dashboard({
       );
       setQuoteBuilder(data.builder);
       setQuoteSavedSnapshot(JSON.stringify(data.builder));
-      setDraftValue(emailDraft);
+      setDraftValue(data.item?.draft ?? emailDraft);
       setToast("Offerte en begeleidende e-mail opgeslagen");
     } catch (caught) {
       setToast(
@@ -1520,10 +1525,14 @@ export function Dashboard({
                         <span>Offertenummer</span>
                         <input
                           value={quoteBuilder.quoteNumber}
+                          readOnly={quoteNumbering.mode === "automatic"}
                           onChange={(event) =>
                             updateQuoteField("quoteNumber", event.target.value)
                           }
                         />
+                        {quoteNumbering.mode === "automatic" && (
+                          <small>Wordt automatisch toegekend wanneer je de offerte opslaat.</small>
+                        )}
                       </label>
                       <label>
                         <span>Offertedatum</span>
@@ -2338,6 +2347,7 @@ function createDefaultQuoteBuilder(
   item: WorkItem,
   concept: ParsedQuoteConcept,
   company: { name: string; address: string; vatNumber: string; email: string },
+  quoteNumbering: QuoteNumberingSettings,
 ): QuoteBuilder {
   const issueDate = dateInputValue(new Date());
   const validUntilDate = new Date();
@@ -2350,7 +2360,7 @@ function createDefaultQuoteBuilder(
     : ["Levering en installatie van zonnepanelen"];
   return {
     version: 1,
-    quoteNumber: `OFF-${issueDate.slice(0, 4)}-${item.id.replace(/\W/g, "").slice(-6).toUpperCase()}`,
+    quoteNumber: formatQuoteNumber(quoteNumbering, Number(issueDate.slice(0, 4))),
     issueDate,
     validUntil: dateInputValue(validUntilDate),
     companyName: company.name,

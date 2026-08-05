@@ -9,6 +9,14 @@ export const organizations = sqliteTable("organizations", {
   companyAddress: text("company_address").notNull().default(""),
   companyVatNumber: text("company_vat_number").notNull().default(""),
   companyEmail: text("company_email").notNull().default(""),
+  quoteNumberMode: text("quote_number_mode").notNull().default("automatic"),
+  quoteNumberPrefix: text("quote_number_prefix").notNull().default("OFF"),
+  quoteNumberNext: integer("quote_number_next").notNull().default(1),
+  quoteNumberStart: integer("quote_number_start").notNull().default(1),
+  quoteNumberResetYearly: integer("quote_number_reset_yearly", { mode: "boolean" })
+    .notNull()
+    .default(true),
+  quoteNumberYear: integer("quote_number_year"),
   createdAt: text("created_at").notNull().default(sql`CURRENT_TIMESTAMP`),
   updatedAt: text("updated_at").notNull().default(sql`CURRENT_TIMESTAMP`),
 });

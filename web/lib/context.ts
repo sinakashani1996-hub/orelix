@@ -10,6 +10,12 @@ export type WorkspaceSummary = {
   companyAddress: string;
   companyVatNumber: string;
   companyEmail: string;
+  quoteNumberMode: "automatic" | "manual";
+  quoteNumberPrefix: string;
+  quoteNumberNext: number;
+  quoteNumberStart: number;
+  quoteNumberResetYearly: boolean;
+  quoteNumberYear: number | null;
   role: string;
   providerOrganizationId: string | null;
 };
@@ -54,6 +60,12 @@ export async function getAppContext(): Promise<AppContext | null> {
       companyAddress: organizations.companyAddress,
       companyVatNumber: organizations.companyVatNumber,
       companyEmail: organizations.companyEmail,
+      quoteNumberMode: organizations.quoteNumberMode,
+      quoteNumberPrefix: organizations.quoteNumberPrefix,
+      quoteNumberNext: organizations.quoteNumberNext,
+      quoteNumberStart: organizations.quoteNumberStart,
+      quoteNumberResetYearly: organizations.quoteNumberResetYearly,
+      quoteNumberYear: organizations.quoteNumberYear,
       providerOrganizationId: organizations.authProviderOrganizationId,
     })
     .from(members)
@@ -84,6 +96,12 @@ export async function getAppContext(): Promise<AppContext | null> {
       companyAddress: activeWorkspace.companyAddress,
       companyVatNumber: activeWorkspace.companyVatNumber,
       companyEmail: activeWorkspace.companyEmail,
+      quoteNumberMode: activeWorkspace.quoteNumberMode,
+      quoteNumberPrefix: activeWorkspace.quoteNumberPrefix,
+      quoteNumberNext: activeWorkspace.quoteNumberNext,
+      quoteNumberStart: activeWorkspace.quoteNumberStart,
+      quoteNumberResetYearly: activeWorkspace.quoteNumberResetYearly,
+      quoteNumberYear: activeWorkspace.quoteNumberYear,
     },
     workspaces,
     role: activeWorkspace.role,
@@ -102,6 +120,12 @@ export async function findExistingWorkspaceForUser(userId: string) {
       companyAddress: organizations.companyAddress,
       companyVatNumber: organizations.companyVatNumber,
       companyEmail: organizations.companyEmail,
+      quoteNumberMode: organizations.quoteNumberMode,
+      quoteNumberPrefix: organizations.quoteNumberPrefix,
+      quoteNumberNext: organizations.quoteNumberNext,
+      quoteNumberStart: organizations.quoteNumberStart,
+      quoteNumberResetYearly: organizations.quoteNumberResetYearly,
+      quoteNumberYear: organizations.quoteNumberYear,
       providerOrganizationId: organizations.authProviderOrganizationId,
     })
     .from(members)
@@ -241,6 +265,12 @@ function toWorkspaceSummary(row: {
   companyAddress: string;
   companyVatNumber: string;
   companyEmail: string;
+  quoteNumberMode: string;
+  quoteNumberPrefix: string;
+  quoteNumberNext: number;
+  quoteNumberStart: number;
+  quoteNumberResetYearly: boolean;
+  quoteNumberYear: number | null;
   providerOrganizationId: string | null;
 }): WorkspaceSummary {
   return {
@@ -250,6 +280,12 @@ function toWorkspaceSummary(row: {
     companyAddress: row.companyAddress,
     companyVatNumber: row.companyVatNumber,
     companyEmail: row.companyEmail,
+    quoteNumberMode: row.quoteNumberMode === "manual" ? "manual" : "automatic",
+    quoteNumberPrefix: row.quoteNumberPrefix,
+    quoteNumberNext: row.quoteNumberNext,
+    quoteNumberStart: row.quoteNumberStart,
+    quoteNumberResetYearly: row.quoteNumberResetYearly,
+    quoteNumberYear: row.quoteNumberYear,
     role: row.role,
     providerOrganizationId: row.providerOrganizationId,
   };

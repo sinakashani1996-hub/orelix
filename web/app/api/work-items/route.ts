@@ -1,10 +1,11 @@
-import { and, desc, eq } from "drizzle-orm";
+import { and, desc, eq, sql } from "drizzle-orm";
 import { ensureDatabase, getDb } from "../../../db";
 import {
   auditEvents,
   integrations,
   modules,
   quoteSignatures,
+  organizations,
   workItems,
 } from "../../../db/schema";
 import { getAppContext } from "../../../lib/context";
@@ -25,6 +26,7 @@ import {
   type AssignableModuleId,
 } from "../../../lib/quote-analyzer";
 import { normalizeQuoteBuilder } from "../../../lib/quote-builder";
+import { formatQuoteNumber } from "../../../lib/quote-numbering";
 
 const assignableModuleIds: AssignableModuleId[] = [
   "quote_assistant",
@@ -388,18 +390,31 @@ export async function PATCH(request: Request) {
       );
     }
     try {
-      const builder = normalizeQuoteBuilder(payload.quoteBuilder);
+      let builder = normalizeQuoteBuilder(payload.quoteBuilder);
       const stored = parseObject<Record<string, unknown>>(
         existing.quoteJson,
         {},
       );
+      // Automatic numbers are issued by the server only once, on the first
+      // save. This keeps the sequence workspace-wide instead of deriving a
+      // number from a browser-local dossier id.
+      if (!stored.builder && context.organization.quoteNumberMode === "automatic") {
+        const assignedNumber = await reserveQuoteNumber(context.organization.id);
+        builder = { ...builder, quoteNumber: assignedNumber };
+      }
       const quoteJson = JSON.stringify({ ...stored, builder });
+      const draft = payload.draft === undefined
+        ? undefined
+        : payload.draft.replace(
+            normalizeQuoteBuilder(payload.quoteBuilder).quoteNumber,
+            builder.quoteNumber,
+          );
       const [updated] = await db
         .update(workItems)
         .set({
           quoteJson,
           updatedAt,
-          ...(payload.draft !== undefined ? { draft: payload.draft } : {}),
+          ...(draft !== undefined ? { draft } : {}),
         })
         .where(
           and(
@@ -414,7 +429,7 @@ export async function PATCH(request: Request) {
         actor: context.user.email,
         action: "quote_edited",
         details:
-          payload.draft !== undefined
+          draft !== undefined
             ? `Offerte ${builder.quoteNumber} en begeleidende e-mail aangepast`
             : `Offerte ${builder.quoteNumber} aangepast`,
       });
@@ -634,6 +649,40 @@ export async function DELETE(request: Request) {
     );
 
   return Response.json({ deleted: true });
+}
+
+async function reserveQuoteNumber(organizationId: string) {
+  const db = getDb();
+  const year = new Date().getFullYear();
+  // The UPDATE is a single D1 statement. Even if two teammates save at the
+  // same time, each receives a distinct sequence number.
+  const [organization] = await db
+    .update(organizations)
+    .set({
+      quoteNumberNext: sql`CASE
+        WHEN ${organizations.quoteNumberResetYearly} = 1
+          AND COALESCE(${organizations.quoteNumberYear}, 0) <> ${year}
+        THEN ${organizations.quoteNumberStart} + 1
+        ELSE ${organizations.quoteNumberNext} + 1
+      END`,
+      quoteNumberYear: year,
+      updatedAt: new Date().toISOString(),
+    })
+    .where(eq(organizations.id, organizationId))
+    .returning({
+      prefix: organizations.quoteNumberPrefix,
+      nextNumber: organizations.quoteNumberNext,
+      resetYearly: organizations.quoteNumberResetYearly,
+    });
+  if (!organization) throw new Error("Workspace niet gevonden");
+  return formatQuoteNumber(
+    {
+      prefix: organization.prefix,
+      nextNumber: Math.max(1, organization.nextNumber - 1),
+      resetYearly: organization.resetYearly,
+    },
+    year,
+  );
 }
 
 function parseConversation(value: string): ConversationMessage[] {

@@ -7,6 +7,7 @@ import {
   getAppContext,
 } from "../../../lib/context";
 import { getWorkOS } from "../../../lib/auth";
+import { normalizeNextNumber, normalizePrefix } from "../../../lib/quote-numbering";
 
 export async function POST(request: Request) {
   const context = await getAppContext();
@@ -75,11 +76,21 @@ export async function PATCH(request: Request) {
     companyAddress?: string;
     companyVatNumber?: string;
     companyEmail?: string;
+    quoteNumberMode?: "automatic" | "manual";
+    quoteNumberPrefix?: string;
+    quoteNumberNext?: number;
+    quoteNumberStart?: number;
+    quoteNumberResetYearly?: boolean;
   };
   const name = body.name?.trim();
   const companyAddress = body.companyAddress?.trim() || "";
   const companyVatNumber = body.companyVatNumber?.trim() || "";
   const companyEmail = body.companyEmail?.trim().toLowerCase() || "";
+  const quoteNumberMode = body.quoteNumberMode === "manual" ? "manual" : "automatic";
+  const quoteNumberPrefix = normalizePrefix(body.quoteNumberPrefix);
+  const quoteNumberNext = normalizeNextNumber(body.quoteNumberNext);
+  const quoteNumberStart = normalizeNextNumber(body.quoteNumberStart);
+  const quoteNumberResetYearly = body.quoteNumberResetYearly !== false;
 
   if (!name || name.length < 2 || name.length > 80) {
     return Response.json({ error: "Geef een geldige bedrijfsnaam op" }, { status: 400 });
@@ -99,6 +110,11 @@ export async function PATCH(request: Request) {
       companyAddress,
       companyVatNumber,
       companyEmail,
+      quoteNumberMode,
+      quoteNumberPrefix,
+      quoteNumberNext,
+      quoteNumberStart,
+      quoteNumberResetYearly,
       updatedAt: new Date().toISOString(),
     })
     .where(eq(organizations.id, context.organization.id))
