@@ -2596,6 +2596,12 @@ a {
   font-size: 9px;
 }
 
+.editor-footer-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
 .save-draft-button {
   display: inline-flex;
   height: 32px;

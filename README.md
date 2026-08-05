@@ -7,8 +7,8 @@ assistants.
 
 ## Start here
 
-Read [ONBOARDING.md](ONBOARDING.md) first. It explains the project layout,
-local setup and the small number of places you normally need to touch.
+Read [web/README.md](web/README.md) first. It explains the local setup and
+the small number of places you normally need to touch.
 
 ## Repository map
 
@@ -17,8 +17,6 @@ local setup and the small number of places you normally need to touch.
 | `web/` | The live Orelix Office web application, Gmail integration and Cloudflare Worker relay. |
 | `directives/` | Product and automation specifications. |
 | `execution/` | Deterministic Python prototypes and their shared domain logic. |
-| `tests/` | Tests for the Python prototypes. |
-| `samples/` | Safe sample emails used by those tests. |
 | `.tmp/` | Regenerable local output. Never share or commit it. |
 
 Secrets stay in local `.env` files and must never be committed or shared.

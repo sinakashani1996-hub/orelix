@@ -527,7 +527,10 @@ export function Dashboard({
   // Inbox is de algemene triage: alles wat binnenkomt verschijnt hier met een
   // AI-label. Zodra een dossier verwerkt is (verzonden, ondertekend,
   // geannuleerd, gearchiveerd) verdwijnt het uit de open inbox.
-  const sectionItems = workspaceSection === "quotes" ? quoteItems : items;
+  // Handmatig aangemaakte offertes komen niet via de mailbox binnen en horen
+  // daarom enkel in de rubriek Offertes, nooit in de Inbox.
+  const inboxItems = items.filter((item) => item.aiProvider !== "manual");
+  const sectionItems = workspaceSection === "quotes" ? quoteItems : inboxItems;
 
   const visibleItems = useMemo(() => {
     return sectionItems.filter((item) => {
@@ -557,7 +560,7 @@ export function Dashboard({
   const viewedItems = sectionItems.filter((item) => item.quoteStatus === "viewed");
   const signedItems = sectionItems.filter((item) => item.quoteStatus === "signed");
   const archivedItems = sectionItems.filter((item) => item.status === "dismissed");
-  const receivedToday = items.filter(
+  const receivedToday = inboxItems.filter(
     (item) => belgianDateKey(item.receivedAt) === belgianDateKey(new Date()),
   ).length;
 
@@ -818,6 +821,39 @@ export function Dashboard({
         caught instanceof Error
           ? caught.message
           : "Opslaan lukte niet. Probeer het opnieuw.",
+      );
+    } finally {
+      setBusy(false);
+      window.setTimeout(() => setToast(""), 4200);
+    }
+  }
+
+  async function reanalyzeItem() {
+    if (!selected || !selected.sourceBody?.trim()) return;
+    setBusy(true);
+    try {
+      const response = await fetch("/api/work-items", {
+        method: "PATCH",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ id: selected.id, moduleId: selected.moduleId }),
+      });
+      const data = await response.json();
+      if (!response.ok)
+        throw new Error(data.error || "Opnieuw analyseren mislukt");
+      setItems((current) =>
+        current.map((item) =>
+          item.id === selected.id
+            ? { ...item, ...data.item, quoteStatus: item.quoteStatus }
+            : item,
+        ),
+      );
+      setDraftValue(data.item.draft || "");
+      setToast("Voorgesteld antwoord opnieuw gegenereerd");
+    } catch (caught) {
+      setToast(
+        caught instanceof Error
+          ? caught.message
+          : "Opnieuw analyseren lukte niet. Probeer het nog eens.",
       );
     } finally {
       setBusy(false);
@@ -2048,18 +2084,31 @@ export function Dashboard({
                       : "Je hebt niet-opgeslagen wijzigingen"}
                   </span>
                   {!closedStatuses.includes(selected.status) && (
-                    <button
-                      className="save-draft-button"
-                      disabled={
-                        busy ||
-                        !draftValue.trim() ||
-                        draftValue === selected.draft
-                      }
-                      onClick={saveDraft}
-                    >
-                      <Save size={15} />
-                      Wijzigingen opslaan
-                    </button>
+                    <div className="editor-footer-actions">
+                      {selected.sourceBody?.trim() && (
+                        <button
+                          className="save-draft-button"
+                          disabled={busy}
+                          onClick={reanalyzeItem}
+                          title="Analyseer de originele e-mail opnieuw en genereer een nieuw voorstel"
+                        >
+                          <Sparkles size={15} />
+                          Opnieuw genereren
+                        </button>
+                      )}
+                      <button
+                        className="save-draft-button"
+                        disabled={
+                          busy ||
+                          !draftValue.trim() ||
+                          draftValue === selected.draft
+                        }
+                        onClick={saveDraft}
+                      >
+                        <Save size={15} />
+                        Wijzigingen opslaan
+                      </button>
+                    </div>
                   )}
                 </div>
               </section>
