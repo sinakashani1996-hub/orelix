@@ -3,7 +3,7 @@
 import {
     Bell, CalendarDays, CheckCircle2, ChevronDown, CircleHelp, FileText,
     Inbox, LayoutDashboard, MessageSquareText, MoreHorizontal, Search, Settings,
-    Users, Wrench, Zap, User, Building2, Link as LinkIcon, ShieldCheck, Mail, Moon, Sun, Palette, Check
+    Users, Receipt, Zap, User, Building2, Link as LinkIcon, ShieldCheck, Mail, Moon, Sun, Palette, Check
 } from "lucide-react";
 import { useState, useEffect, FormEvent } from "react";
 
@@ -323,11 +323,11 @@ export function SettingsPage({
                 </nav>
                 <p className="nav-kicker">ASSISTENTEN</p>
                 <nav className="assistant-nav">
-                    <a href="/"><FileText size={17} /> Offerte</a>
-                    <a href="/#inbox"><Inbox size={17} /> Inbox <small>Bèta</small></a>
-                    <a href="/#service"><Wrench size={17} /> Service <small>Bèta</small></a>
-                    <a className="muted" href="/planning"><CalendarDays size={17} /> Planning</a>
-                    <a className="muted" href="/#crm"><Users size={17} /> CRM</a>
+                    <a href="/"><Inbox size={17} /> Inbox</a>
+                    <a href="/?section=quotes"><FileText size={17} /> Offerte</a>
+                    <a href="/planning"><CalendarDays size={17} /> Planning</a>
+                    <a className="muted" href="/#factuur"><Receipt size={17} /> Factuur <small>Binnenkort</small></a>
+                    <a className="muted" href="/#crm"><Users size={17} /> CRM <small>Binnenkort</small></a>
                 </nav>
                 <div className="sidebar-bottom">
                     <a href="/settings" className="active">

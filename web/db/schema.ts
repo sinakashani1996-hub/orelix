@@ -72,6 +72,7 @@ export const workItems = sqliteTable("work_items", {
   extractedJson: text("extracted_json").notNull().default("{}"),
   quoteJson: text("quote_json").notNull().default("{}"),
   aiProvider: text("ai_provider").notNull().default("rules"),
+  label: text("label").notNull().default(""),
   createdAt: text("created_at").notNull().default(sql`CURRENT_TIMESTAMP`),
   updatedAt: text("updated_at").notNull().default(sql`CURRENT_TIMESTAMP`),
 });

@@ -33,6 +33,23 @@ export async function getCurrentUser(): Promise<OrelixUser | null> {
   const cookieStore = await cookies();
   const sealedSession = cookieStore.get(SESSION_COOKIE)?.value;
 
+  const requestHeaders = await headers();
+  const host = requestHeaders.get("host") ?? "";
+  // Local development skips WorkOS entirely, even when the production keys
+  // from .env.local are present. The AuthKit callback points at app.orelix.be,
+  // so a real login flow can never complete on localhost anyway.
+  if (
+    process.env.NODE_ENV !== "production" &&
+    (host.startsWith("localhost") || host.startsWith("127.0.0.1"))
+  ) {
+    return {
+      id: "local:sina",
+      email: "demo@orelix.local",
+      name: "Sina Kashani",
+      provider: "local",
+    };
+  }
+
   if (config) {
     if (!sealedSession) return null;
     try {
@@ -62,7 +79,6 @@ export async function getCurrentUser(): Promise<OrelixUser | null> {
     return null;
   }
 
-  const requestHeaders = await headers();
   const email = requestHeaders.get("oai-authenticated-user-email");
   if (email) {
     const encodedName = requestHeaders.get("oai-authenticated-user-full-name");
@@ -76,7 +92,6 @@ export async function getCurrentUser(): Promise<OrelixUser | null> {
     return { id: `sites:${email}`, email, name, provider: "sites" };
   }
 
-  const host = requestHeaders.get("host") ?? "";
   if (host.startsWith("localhost") || host.startsWith("127.0.0.1")) {
     return {
       id: "local:sina",

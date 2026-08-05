@@ -3,7 +3,9 @@
 import {
   Archive,
   ArrowRight,
+  Ban,
   Bell,
+  BellRing,
   CalendarDays,
   Check,
   CheckCircle2,
@@ -17,9 +19,12 @@ import {
   LayoutDashboard,
   LogOut,
   Mail,
+  MailPlus,
   MessageSquareText,
   MoreHorizontal,
+  PenLine,
   Plus,
+  Receipt,
   Search,
   Save,
   Send,
@@ -27,9 +32,9 @@ import {
   Sparkles,
   RotateCcw,
   RefreshCw,
+  Tag,
   Trash2,
   Users,
-  Wrench,
   X,
   Zap,
 } from "lucide-react";
@@ -66,13 +71,7 @@ type WorkItem = {
   quoteSentAt?: string | null;
   quoteViewedAt?: string | null;
   quoteSignedAt?: string | null;
-};
-
-type Module = {
-  id: string;
-  name: string;
-  description: string;
-  status: string;
+  label?: string | null;
 };
 
 type MailboxIntegration = {
@@ -82,12 +81,7 @@ type MailboxIntegration = {
   updatedAt: string;
 };
 
-type AssignableModuleId =
-  | "quote_assistant"
-  | "inbox_assistant"
-  | "service_assistant";
-
-const closedStatuses = ["sent", "dismissed", "approved", "signed"];
+const closedStatuses = ["sent", "dismissed", "approved", "signed", "cancelled"];
 
 const recordStatusLabels: Record<string, string> = {
   needs_approval: "Goedkeuren",
@@ -96,31 +90,25 @@ const recordStatusLabels: Record<string, string> = {
   viewed: "Bekeken",
   approved: "Goedgekeurd",
   signed: "Ondertekend",
+  cancelled: "Geannuleerd",
   dismissed: "Archief",
   routed: "Openstaand",
 };
 
-const moduleIcons = {
-  quote_assistant: FileText,
-  inbox_assistant: Inbox,
-  service_assistant: Wrench,
-  planning_assistant: CalendarDays,
-  crm_assistant: Users,
-};
+const quoteLabelOptions = [
+  "Prioriteit",
+  "Nabellen",
+  "Wacht op klant",
+  "Facturatie",
+];
 
 const moduleLabels: Record<string, string> = {
   quote_assistant: "Offerte",
-  inbox_assistant: "Inbox",
-  service_assistant: "Service",
+  inbox_assistant: "Algemeen",
+  service_assistant: "Klacht",
   planning_assistant: "Planning",
   crm_assistant: "CRM",
 };
-
-const assignableModules: { id: AssignableModuleId; name: string }[] = [
-  { id: "quote_assistant", name: "Offerte Assistent" },
-  { id: "inbox_assistant", name: "Inbox Assistent" },
-  { id: "service_assistant", name: "Service Assistent" },
-];
 
 function initials(name: string) {
   return name
@@ -135,6 +123,13 @@ function timeLabel(value: string) {
   return new Intl.DateTimeFormat("nl-BE", {
     hour: "2-digit",
     minute: "2-digit",
+  }).format(new Date(value));
+}
+
+function receivedDateLabel(value: string) {
+  return new Intl.DateTimeFormat("nl-BE", {
+    day: "numeric",
+    month: "short",
   }).format(new Date(value));
 }
 
@@ -185,12 +180,21 @@ export function Dashboard({
   quoteNumbering: QuoteNumberingSettings;
 }) {
   const [items, setItems] = useState<WorkItem[]>([]);
-  const [modules, setModules] = useState<Module[]>([]);
   const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [rowMenuId, setRowMenuId] = useState<string | null>(null);
   const [workspaceSection, setWorkspaceSection] = useState<"inbox" | "quotes">("inbox");
   const [filter, setFilter] = useState("open");
   const [query, setQuery] = useState("");
   const [syncing, setSyncing] = useState(true);
+  // Deep links vanaf andere pagina's (bv. Planning > Offerte) openen meteen
+  // de juiste rubriek via ?section=quotes.
+  useEffect(() => {
+    const section = new URLSearchParams(window.location.search).get("section");
+    if (section === "quotes") {
+      setWorkspaceSection("quotes");
+      setFilter("all_records");
+    }
+  }, []);
   const [syncingInbox, setSyncingInbox] = useState(false);
   const [loadError, setLoadError] = useState("");
   const [toast, setToast] = useState("");
@@ -200,6 +204,8 @@ export function Dashboard({
   const mailboxControlRef = useRef<HTMLDivElement | null>(null);
   const [mailboxSetupOpen, setMailboxSetupOpen] = useState(false);
   const [manualQuoteOpen, setManualQuoteOpen] = useState(false);
+  const [composeOpen, setComposeOpen] = useState(false);
+  const [composeForm, setComposeForm] = useState({ to: "", subject: "", body: "" });
   const [openQuoteBuilderForId, setOpenQuoteBuilderForId] = useState<string | null>(null);
   const [manualQuoteForm, setManualQuoteForm] = useState({
     customerName: "",
@@ -238,11 +244,9 @@ export function Dashboard({
       if (!response.ok) throw new Error("Workspace laden mislukt");
       const data = await response.json();
       setItems(Array.isArray(data.items) ? data.items : []);
-      setModules(Array.isArray(data.modules) ? data.modules : []);
       setIntegration(data.integration || null);
     } catch {
       setItems([]);
-      setModules([]);
       setIntegration(null);
       setLoadError(
         "De actuele workspacegegevens konden niet worden geladen. Probeer het opnieuw.",
@@ -304,6 +308,33 @@ export function Dashboard({
     } finally {
       setBusy(false);
       setSyncingInbox(false);
+      window.setTimeout(() => setToast(""), 4200);
+    }
+  }
+
+  async function sendCompose(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    setBusy(true);
+    try {
+      const response = await fetch("/api/mail/compose", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify(composeForm),
+      });
+      requireActiveSession(response);
+      const data = await response.json();
+      if (!response.ok) throw new Error(data.error || "Verzenden mislukt");
+      setComposeOpen(false);
+      setComposeForm({ to: "", subject: "", body: "" });
+      setToast(`E-mail verzonden naar ${composeForm.to}`);
+    } catch (caught) {
+      setToast(
+        caught instanceof Error
+          ? caught.message
+          : "Verzenden lukte niet. Probeer het opnieuw.",
+      );
+    } finally {
+      setBusy(false);
       window.setTimeout(() => setToast(""), 4200);
     }
   }
@@ -493,10 +524,10 @@ export function Dashboard({
   const quoteItems = items.filter(
     (item) => item.moduleId === "quote_assistant" || Boolean(item.quoteStatus),
   );
-  const emailItems = items.filter(
-    (item) => item.moduleId !== "quote_assistant" && !item.quoteStatus,
-  );
-  const sectionItems = workspaceSection === "quotes" ? quoteItems : emailItems;
+  // Inbox is de algemene triage: alles wat binnenkomt verschijnt hier met een
+  // AI-label. Zodra een dossier verwerkt is (verzonden, ondertekend,
+  // geannuleerd, gearchiveerd) verdwijnt het uit de open inbox.
+  const sectionItems = workspaceSection === "quotes" ? quoteItems : items;
 
   const visibleItems = useMemo(() => {
     return sectionItems.filter((item) => {
@@ -575,6 +606,69 @@ export function Dashboard({
     window.setTimeout(() => setToast(""), 4200);
   }
 
+  async function quoteAction(
+    id: string,
+    action: "reminder" | "label" | "mark_signed" | "cancel",
+    label?: string,
+  ) {
+    setBusy(true);
+    try {
+      const response = await fetch(`/api/work-items/${id}/quote-actions`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ action, label }),
+      });
+      const data = await response.json();
+      if (!response.ok) throw new Error(data.error || "Actie mislukt");
+      setItems((current) =>
+        current.map((item) => {
+          if (item.id !== id) return item;
+          if (action === "label") {
+            return { ...item, label: data.item?.label ?? label ?? "" };
+          }
+          if (action === "mark_signed") {
+            return {
+              ...item,
+              status: "signed",
+              quoteStatus: "signed",
+              quoteSignedAt: new Date().toISOString(),
+            };
+          }
+          if (action === "cancel") {
+            return { ...item, status: "cancelled", quoteStatus: undefined };
+          }
+          return {
+            ...item,
+            quoteStatus: "sent",
+            quoteSentAt: data.quoteSentAt || item.quoteSentAt,
+          };
+        }),
+      );
+      setToast(
+        action === "reminder"
+          ? "Herinnering verzonden naar de klant"
+          : action === "label"
+            ? label
+              ? `Label "${label}" ingesteld`
+              : "Label verwijderd"
+            : action === "mark_signed"
+              ? "Offerte gemarkeerd als ondertekend"
+              : "Offerte geannuleerd",
+      );
+      if (action === "mark_signed" || action === "cancel") {
+        setSelectedId(null);
+      }
+    } catch (caught) {
+      setToast(
+        caught instanceof Error
+          ? caught.message
+          : "Actie lukte niet. Probeer het opnieuw.",
+      );
+    }
+    setBusy(false);
+    window.setTimeout(() => setToast(""), 4200);
+  }
+
   async function createManualQuote(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     setBusy(true);
@@ -623,6 +717,22 @@ export function Dashboard({
       setBusy(false);
       window.setTimeout(() => setToast(""), 4200);
     }
+  }
+
+  function runRowAction(
+    id: string,
+    action: "reminder" | "mark_signed" | "cancel" | "archive" | "restore",
+  ) {
+    setRowMenuId(null);
+    if (action === "archive") {
+      void updateStatus(id, "dismissed");
+      return;
+    }
+    if (action === "restore") {
+      void restoreArchivedItem(id);
+      return;
+    }
+    void quoteAction(id, action);
   }
 
   async function restoreArchivedItem(id: string) {
@@ -881,37 +991,6 @@ export function Dashboard({
     }
   }
 
-  async function reassignItem(moduleId: AssignableModuleId) {
-    if (!selected) return;
-    setBusy(true);
-    try {
-      const response = await fetch("/api/work-items", {
-        method: "PATCH",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({ id: selected.id, moduleId }),
-      });
-      const data = await response.json();
-      if (!response.ok) throw new Error(data.error || "Toewijzen mislukt");
-      setItems((current) =>
-        current.map((item) => (item.id === selected.id ? data.item : item)),
-      );
-      setDraftValue(data.item.draft);
-      const assistant = assignableModules.find((entry) => entry.id === moduleId);
-      setToast(
-        `Opnieuw geanalyseerd door ${assistant?.name || "de gekozen assistent"}`,
-      );
-    } catch (caught) {
-      setToast(
-        caught instanceof Error
-          ? caught.message
-          : "Toewijzen lukte niet. Probeer het opnieuw.",
-      );
-    } finally {
-      setBusy(false);
-      window.setTimeout(() => setToast(""), 4200);
-    }
-  }
-
   return (
     <div className="app-shell">
       <aside className="sidebar">
@@ -953,28 +1032,43 @@ export function Dashboard({
 
         <p className="nav-kicker">ASSISTENTEN</p>
         <nav className="assistant-nav" aria-label="Assistenten">
-          <a className="assistant-active" href="#offerte">
-            <FileText size={17} />
-            Offerte
-            <span className="status-dot" />
-          </a>
-          <a className="muted" href="#inbox">
+          <button
+            type="button"
+            className={workspaceSection === "inbox" ? "assistant-active" : ""}
+            aria-current={workspaceSection === "inbox" ? "page" : undefined}
+            onClick={() => {
+              setWorkspaceSection("inbox");
+              setFilter("open");
+            }}
+          >
             <Inbox size={17} />
             Inbox
-            <small>Bèta</small>
-          </a>
-          <a className="muted" href="#service">
-            <Wrench size={17} />
-            Service
-            <small>Bèta</small>
-          </a>
-          <a href="planning">
+          </button>
+          <button
+            type="button"
+            className={workspaceSection === "quotes" ? "assistant-active" : ""}
+            aria-current={workspaceSection === "quotes" ? "page" : undefined}
+            onClick={() => {
+              setWorkspaceSection("quotes");
+              setFilter("all_records");
+            }}
+          >
+            <FileText size={17} />
+            Offerte
+          </button>
+          <a href="/planning">
             <CalendarDays size={17} />
             Planning
+          </a>
+          <a className="muted" href="#factuur">
+            <Receipt size={17} />
+            Factuur
+            <small>Binnenkort</small>
           </a>
           <a className="muted" href="#crm">
             <Users size={17} />
             CRM
+            <small>Binnenkort</small>
           </a>
         </nav>
 
@@ -1018,14 +1112,25 @@ export function Dashboard({
             <Bell size={19} />
             <span className="notification-dot" />
           </button>
-          <button
-            type="button"
-            className="primary-button quick-quote-button"
-            onClick={() => setManualQuoteOpen(true)}
-          >
-            <Plus size={16} />
-            Nieuwe offerte
-          </button>
+          {workspaceSection === "quotes" ? (
+            <button
+              type="button"
+              className="primary-button quick-quote-button"
+              onClick={() => setManualQuoteOpen(true)}
+            >
+              <Plus size={16} />
+              Nieuwe offerte
+            </button>
+          ) : integration && !gmailNeedsReconnect ? (
+            <button
+              type="button"
+              className="primary-button quick-quote-button"
+              onClick={() => setComposeOpen(true)}
+            >
+              <MailPlus size={16} />
+              Nieuwe mail
+            </button>
+          ) : null}
         </header>
 
         <div className="content-wrap">
@@ -1153,69 +1258,42 @@ export function Dashboard({
 
           <div className="dashboard-grid">
             <section className="work-panel" id="werk">
-              <div className="workspace-tabs" role="tablist" aria-label="Werkruimtes">
-                <button
-                  type="button"
-                  role="tab"
-                  aria-selected={workspaceSection === "inbox"}
-                  className={workspaceSection === "inbox" ? "selected" : ""}
-                  onClick={() => {
-                    setWorkspaceSection("inbox");
-                    setFilter("open");
-                  }}
-                >
-                  Inbox <span>{emailItems.filter((item) => !closedStatuses.includes(item.status)).length}</span>
-                </button>
-                <button
-                  type="button"
-                  role="tab"
-                  aria-selected={workspaceSection === "quotes"}
-                  className={workspaceSection === "quotes" ? "selected" : ""}
-                  onClick={() => {
-                    setWorkspaceSection("quotes");
-                    setFilter("open");
-                  }}
-                >
-                  Offertes <span>{quoteItems.filter((item) => !closedStatuses.includes(item.status)).length}</span>
-                </button>
-              </div>
-              <div className="section-heading">
-                <div>
-                  <h2>
-                    {filter === "all_records"
-                      ? "Alle dossiers"
-                      : "Werk voor jou klaar"}
-                  </h2>
+              <div className="panel-header">
+                <div className="panel-title">
+                  <h2>{workspaceSection === "quotes" ? "Offertes" : "Inbox"}</h2>
                   <p>
-                    {filter === "all_records"
-                      ? "Openstaand, verzonden en gearchiveerd op één plek."
-                      : "Alleen beslissingen die jouw aandacht nodig hebben."}
+                    {syncing
+                      ? "Dossiers laden…"
+                      : `${sectionItems.length} dossier${sectionItems.length === 1 ? "" : "s"}`}
                   </p>
                 </div>
-                <div className="section-heading-actions">
-                  <button
-                    className="text-button"
-                    onClick={() =>
-                      setFilter(filter === "all_records" ? "open" : "all_records")
-                    }
-                  >
-                    {filter === "all_records"
-                      ? "Terug naar openstaand"
-                      : "Alles bekijken"}{" "}
-                    <ArrowRight size={15} />
-                  </button>
+                <div className="panel-actions">
+                  <label className="panel-search">
+                    <Search size={15} />
+                    <input
+                      aria-label="Zoek in dossiers"
+                      placeholder="Zoeken…"
+                      value={query}
+                      onChange={(event) => setQuery(event.target.value)}
+                    />
+                  </label>
+                  {workspaceSection === "quotes" && (
+                    <button
+                      type="button"
+                      className="primary-button panel-new-quote"
+                      onClick={() => setManualQuoteOpen(true)}
+                    >
+                      <Plus size={16} />
+                      Nieuwe offerte
+                    </button>
+                  )}
                 </div>
               </div>
 
-              <div className="filter-row">
-                {filter === "all_records" && (
-                  <button className="selected" onClick={() => setFilter("open")}>
-                    Alle items <span>{sectionItems.length}</span>
-                  </button>
-                )}
+              <div className="status-tabs" role="tablist" aria-label="Statusfilter">
                 {(workspaceSection === "quotes"
                   ? [
-                      ["open", "Aanvragen", openItems.length],
+                      ["all_records", "Alle", sectionItems.length],
                       ["approval", "Goedkeuren", approvalItems.length],
                       ["drafts", "Concepten", draftItems.length],
                       ["sent", "Verzonden", sentItems.length],
@@ -1224,19 +1302,23 @@ export function Dashboard({
                       ["archive", "Archief", archivedItems.length],
                     ]
                   : [
+                      ["all_records", "Alle", sectionItems.length],
                       ["open", "Openstaand", openItems.length],
                       ["archive", "Archief", archivedItems.length],
                     ]
                 ).map(([value, label, count]) => (
                   <button
-                    key={value}
-                    className={filter === value ? "selected" : ""}
+                    key={String(value)}
+                    type="button"
+                    role="tab"
+                    aria-selected={filter === value}
+                    className={filter === value ? "active" : ""}
                     onClick={() => setFilter(String(value))}
                   >
-                    {label} <span>{count}</span>
+                    {label}
+                    <span>{count}</span>
                   </button>
                 ))}
-                {syncing && <small className="sync-label">Synchroniseren…</small>}
               </div>
 
               <div className="work-list">
@@ -1251,38 +1333,147 @@ export function Dashboard({
                       </span>
                     </div>
                   ))}
+                {!syncing && !loadError && visibleItems.length > 0 && (
+                  <div className="work-list-header" aria-hidden="true">
+                    <span>Klant</span>
+                    <span>Dossier</span>
+                    <span>Ontvangen</span>
+                    <span>Status</span>
+                    <span />
+                  </div>
+                )}
                 {!syncing && !loadError && visibleItems.map((item) => (
-                  <button
+                  <div
                     key={item.id}
+                    role="button"
+                    tabIndex={0}
                     className="work-item"
                     onClick={() => setSelectedId(item.id)}
+                    onKeyDown={(event) => {
+                      if (event.key === "Enter" || event.key === " ") {
+                        event.preventDefault();
+                        setSelectedId(item.id);
+                      }
+                    }}
                   >
-                    <span className={`avatar ${item.moduleId}`}>
-                      {initials(item.customerName)}
+                    <span className="work-customer">
+                      <span className={`avatar ${item.moduleId}`}>
+                        {initials(item.customerName)}
+                      </span>
+                      <span className="work-customer-copy">
+                        <strong>{item.customerName}</strong>
+                        <small>{item.customerEmail}</small>
+                      </span>
                     </span>
-                    <span className="work-copy">
-                      <span className="work-meta">
+                    <span className="work-subject">
+                      <span className="work-subject-meta">
                         <span className={`module-tag ${item.moduleId}`}>
                           {moduleLabels[item.moduleId]}
                         </span>
-                        <span>{timeLabel(item.receivedAt)}</span>
+                        {item.priority === "high" && (
+                          <span className="priority">Prioriteit</span>
+                        )}
+                        {item.label ? (
+                          <span className="work-label">{item.label}</span>
+                        ) : null}
                       </span>
-                      <strong>{item.customerName}</strong>
                       <b>{item.title}</b>
                       <small>{item.summary}</small>
                     </span>
-                    <span className="work-aside">
-                      {item.priority === "high" && (
-                        <span className="priority">Prioriteit</span>
-                      )}
-                      <span
-                        className={`record-state record-state-${item.status}`}
-                      >
-                        {recordStatusLabels[item.quoteStatus || item.status] || item.dueLabel}
-                      </span>
-                      <ChevronRight size={19} />
+                    <span className="work-date">
+                      <strong>{receivedDateLabel(item.receivedAt)}</strong>
+                      <small>{timeLabel(item.receivedAt)}</small>
                     </span>
-                  </button>
+                    <span
+                      className={`record-state record-state-${item.status}`}
+                    >
+                      {recordStatusLabels[
+                        item.status === "dismissed"
+                          ? "dismissed"
+                          : item.quoteStatus || item.status
+                      ] || item.dueLabel}
+                    </span>
+                    <span
+                      className="row-menu-wrap"
+                      onClick={(event) => event.stopPropagation()}
+                      onKeyDown={(event) => event.stopPropagation()}
+                    >
+                      <button
+                        type="button"
+                        className="row-menu-button"
+                        aria-label="Dossieracties"
+                        aria-expanded={rowMenuId === item.id}
+                        onClick={() =>
+                          setRowMenuId(rowMenuId === item.id ? null : item.id)
+                        }
+                      >
+                        <ChevronRight
+                          size={18}
+                          className={`work-chevron${rowMenuId === item.id ? " open" : ""}`}
+                        />
+                      </button>
+                      {rowMenuId === item.id && (
+                        <div className="row-menu" role="menu">
+                          {item.status === "dismissed" ? (
+                            <>
+                              {(item.quoteStatus === "sent" ||
+                                item.quoteStatus === "viewed") && (
+                                <button
+                                  type="button"
+                                  role="menuitem"
+                                  className="danger"
+                                  onClick={() => runRowAction(item.id, "cancel")}
+                                >
+                                  <Ban size={14} />
+                                  Offerte annuleren
+                                </button>
+                              )}
+                              <button
+                                type="button"
+                                role="menuitem"
+                                onClick={() => runRowAction(item.id, "restore")}
+                              >
+                                <RotateCcw size={14} />
+                                Terugzetten
+                              </button>
+                            </>
+                          ) : (
+                            <>
+                              {(item.quoteStatus === "sent" ||
+                                item.quoteStatus === "viewed") && (
+                                <>
+                                  <button
+                                    type="button"
+                                    role="menuitem"
+                                    onClick={() => runRowAction(item.id, "reminder")}
+                                  >
+                                    <BellRing size={14} />
+                                    Herinnering sturen
+                                  </button>
+                                  <button
+                                    type="button"
+                                    role="menuitem"
+                                    onClick={() => runRowAction(item.id, "mark_signed")}
+                                  >
+                                    <PenLine size={14} />
+                                    Markeer getekend
+                                  </button>
+                                </>
+                              )}
+                              <button
+                                type="button"
+                                role="menuitem"
+                                onClick={() => runRowAction(item.id, "archive")}
+                              >
+                                <Archive size={14} />
+                                Archiveren
+                              </button>
+                            </>
+                          )}
+                        </div>
+                      )}
+                    </span>
+                  </div>
                 ))}
                 {!syncing && loadError && (
                   <div className="empty-state error-state">
@@ -1317,74 +1508,17 @@ export function Dashboard({
                 )}
               </div>
             </section>
-
-            <aside className="right-column">
-              <section className="assistants-card">
-                <div className="section-heading compact">
-                  <div>
-                    <h2>Jouw assistenten</h2>
-                    <p>Eén team, elk met een eigen specialisme.</p>
-                  </div>
-                </div>
-                <div className="module-list">
-                  {syncing &&
-                    Array.from({ length: 5 }).map((_, index) => (
-                      <div className="module-row-skeleton" key={index}>
-                        <span className="skeleton-block module-skeleton-icon" />
-                        <span className="skeleton-copy">
-                          <span className="skeleton-block medium" />
-                          <span className="skeleton-block long" />
-                        </span>
-                      </div>
-                    ))}
-                  {!syncing && modules.map((module) => {
-                    const Icon =
-                      moduleIcons[module.id as keyof typeof moduleIcons] ?? Sparkles;
-                    return (
-                      <button className="module-row" key={module.id}>
-                        <span className={`module-icon ${module.id}`}>
-                          <Icon size={19} />
-                        </span>
-                        <span>
-                          <strong>{module.name}</strong>
-                          <small>{module.description}</small>
-                        </span>
-                        {module.status === "active" ? (
-                          <span className="live-state">
-                            <i /> Actief
-                          </span>
-                        ) : module.status === "beta" ? (
-                          <span className="beta-state">Bèta</span>
-                        ) : (
-                          <span className="soon-state">Binnenkort</span>
-                        )}
-                      </button>
-                    );
-                  })}
-                </div>
-                <button className="manage-button">
-                  Assistenten beheren <ArrowRight size={15} />
-                </button>
-              </section>
-
-              <section className="insight-card">
-                <div className="insight-orbit">
-                  <Sparkles size={21} />
-                </div>
-                <div>
-                  <p>ORELIX INZICHT</p>
-                  <h3>Je workspace is klaar.</h3>
-                  <span>
-                    Nieuwe Gmail-berichten worden verwerkt zodra ze binnenkomen.
-                    Alleen acties die jouw aandacht vragen verschijnen hier.
-                  </span>
-                  <button>Bekijk je werk <ArrowRight size={14} /></button>
-                </div>
-              </section>
-            </aside>
           </div>
         </div>
       </main>
+
+      {rowMenuId && (
+        <button
+          className="row-menu-backdrop"
+          aria-label="Menu sluiten"
+          onClick={() => setRowMenuId(null)}
+        />
+      )}
 
       {selected && (
         <>
@@ -1429,41 +1563,6 @@ export function Dashboard({
                   : "AI-controle"}
               </span>
               <strong>{selected.confidence}% vertrouwen</strong>
-            </div>
-
-            <label className="assignment-control">
-              <span>
-                <strong>Toewijzen aan</strong>
-                <small>
-                  Verwerk de originele e-mail opnieuw met deze assistent
-                </small>
-              </span>
-              <select
-                aria-label="Toewijzen aan assistent"
-                value={selected.moduleId}
-                disabled={busy}
-                onChange={(event) =>
-                  reassignItem(event.target.value as AssignableModuleId)
-                }
-              >
-                {assignableModules.map((module) => (
-                  <option key={module.id} value={module.id}>
-                    {module.name}
-                  </option>
-                ))}
-              </select>
-            </label>
-
-            <div className="assignment-actions">
-              <button
-                className="secondary-button reanalyze-button"
-                disabled={busy}
-                onClick={() => reassignItem(selected.moduleId as AssignableModuleId)}
-              >
-                <Sparkles size={15} />
-                Opnieuw analyseren
-              </button>
-              <small>Gebruik dit wanneer je het antwoord wilt laten herbekijken.</small>
             </div>
 
             <div className="drawer-section">
@@ -1968,6 +2067,17 @@ export function Dashboard({
 
             {selected.status === "dismissed" ? (
               <div className="drawer-actions archive-actions">
+                {(selected.quoteStatus === "sent" ||
+                  selected.quoteStatus === "viewed") && (
+                  <button
+                    className="secondary-button danger"
+                    disabled={busy}
+                    onClick={() => quoteAction(selected.id, "cancel")}
+                  >
+                    <Ban size={16} />
+                    Offerte annuleren
+                  </button>
+                )}
                 <button
                   className="secondary-button"
                   disabled={busy}
@@ -1985,13 +2095,55 @@ export function Dashboard({
                   Definitief verwijderen
                 </button>
               </div>
-            ) : ["sent", "approved", "signed"].includes(selected.status) ? (
+            ) : ["sent", "approved", "signed", "cancelled"].includes(selected.status) ? (
               <div className="drawer-actions completed-actions">
+                {(selected.quoteStatus === "sent" ||
+                  selected.quoteStatus === "viewed") && (
+                  <div className="quote-actions">
+                    <div className="quote-actions-row">
+                      <button
+                        className="quote-action-button"
+                        disabled={busy}
+                        onClick={() => quoteAction(selected.id, "reminder")}
+                      >
+                        <BellRing size={15} />
+                        Herinnering
+                      </button>
+                      <button
+                        className="quote-action-button success"
+                        disabled={busy}
+                        onClick={() => quoteAction(selected.id, "mark_signed")}
+                      >
+                        <PenLine size={15} />
+                        Getekend
+                      </button>
+                    </div>
+                    <label className="quote-label-select">
+                      <Tag size={14} />
+                      <select
+                        value={selected.label || ""}
+                        disabled={busy}
+                        onChange={(event) =>
+                          quoteAction(selected.id, "label", event.target.value)
+                        }
+                      >
+                        <option value="">Geen label</option>
+                        {quoteLabelOptions.map((option) => (
+                          <option key={option} value={option}>
+                            {option}
+                          </option>
+                        ))}
+                      </select>
+                    </label>
+                  </div>
+                )}
                 <span className="completed-message">
                   <CheckCircle2 size={17} />
                   {selected.status === "signed"
                     ? "De klant heeft deze offerte ondertekend."
-                    : "Dit dossier is verzonden en blijft bewaard in Verzonden."}
+                    : selected.status === "cancelled"
+                      ? "Deze offerte werd geannuleerd."
+                      : "Dit dossier is verzonden en blijft bewaard in Verzonden."}
                 </span>
                 {selected.status === "signed" && (
                   <a
@@ -2045,6 +2197,74 @@ export function Dashboard({
             )}
           </aside>
         </>
+      )}
+
+      {composeOpen && (
+        <div
+          className="mailbox-modal-backdrop"
+          role="presentation"
+          onMouseDown={(event) => {
+            if (event.target === event.currentTarget) setComposeOpen(false);
+          }}
+        >
+          <form className="mailbox-modal" onSubmit={sendCompose}>
+            <div className="mailbox-modal-heading">
+              <div>
+                <p className="drawer-label">NIEUWE MAIL</p>
+                <h2>Bericht opstellen</h2>
+              </div>
+              <button
+                type="button"
+                className="icon-button"
+                aria-label="Sluiten"
+                onClick={() => setComposeOpen(false)}
+              >
+                <X size={18} />
+              </button>
+            </div>
+            <label>
+              Aan
+              <input
+                type="email"
+                required
+                autoComplete="off"
+                placeholder="klant@voorbeeld.be"
+                value={composeForm.to}
+                onChange={(event) =>
+                  setComposeForm({ ...composeForm, to: event.target.value })
+                }
+              />
+            </label>
+            <label>
+              Onderwerp
+              <input
+                required
+                autoComplete="off"
+                placeholder="Onderwerp van je bericht"
+                value={composeForm.subject}
+                onChange={(event) =>
+                  setComposeForm({ ...composeForm, subject: event.target.value })
+                }
+              />
+            </label>
+            <label>
+              Bericht
+              <textarea
+                required
+                rows={8}
+                placeholder="Beste ..."
+                value={composeForm.body}
+                onChange={(event) =>
+                  setComposeForm({ ...composeForm, body: event.target.value })
+                }
+              />
+            </label>
+            <button type="submit" className="approve-button" disabled={busy}>
+              <Send size={16} />
+              {busy ? "Verzenden…" : "Verzenden"}
+            </button>
+          </form>
+        </div>
       )}
 
       {mailboxSetupOpen && (

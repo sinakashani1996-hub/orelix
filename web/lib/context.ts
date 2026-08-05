@@ -1,6 +1,11 @@
-import { and, eq } from "drizzle-orm";
+import { and, desc, eq, inArray } from "drizzle-orm";
 import { ensureDatabase, getDb } from "../db";
-import { members, organizations, organizationModules } from "../db/schema";
+import {
+  integrations,
+  members,
+  organizations,
+  organizationModules,
+} from "../db/schema";
 import { getCurrentUser, type OrelixUser } from "./auth";
 
 export type WorkspaceSummary = {
@@ -81,7 +86,9 @@ export async function getAppContext(): Promise<AppContext | null> {
     ? workspaces.find(
         (workspace) => workspace.providerOrganizationId === user.providerOrganizationId,
       )
-    : workspaces[0];
+    : user.provider === "local"
+      ? await preferredLocalWorkspace(workspaces)
+      : workspaces[0];
 
   if (!activeWorkspace) {
     return { user, organization: null, workspaces: [], role: null };
@@ -208,11 +215,20 @@ export async function createWorkspaceForUser(
 
 async function ensureDemoWorkspace(user: OrelixUser) {
   const db = getDb();
+  // Local development signs in as the demo user. If a workspace with a linked
+  // mailbox already exists locally (e.g. one mirrored from a WorkOS test
+  // session), join that one so the local session works on the same data
+  // instead of landing in an empty demo workspace.
+  const organizationId = (await linkedWorkspaceId(db)) ?? "org_demo";
+
   const existing = await db
     .select({ id: members.id })
     .from(members)
     .where(
-      and(eq(members.organizationId, "org_demo"), eq(members.authUserId, user.id)),
+      and(
+        eq(members.organizationId, organizationId),
+        eq(members.authUserId, user.id),
+      ),
     )
     .limit(1);
   if (existing.length) return;
@@ -220,14 +236,14 @@ async function ensureDemoWorkspace(user: OrelixUser) {
   await db
     .insert(organizations)
     .values({
-      id: "org_demo",
+      id: organizationId,
       name: "First Client BV",
       slug: "first-client-demo",
     })
     .onConflictDoNothing();
   await db.insert(members).values({
     id: `member_${crypto.randomUUID()}`,
-    organizationId: "org_demo",
+    organizationId,
     authUserId: user.id,
     email: user.email,
     name: user.name,
@@ -239,12 +255,44 @@ async function ensureDemoWorkspace(user: OrelixUser) {
       .insert(organizationModules)
       .values({
         id: `orgmod_${crypto.randomUUID()}`,
-        organizationId: "org_demo",
+        organizationId,
         moduleId,
         status,
       })
       .onConflictDoNothing();
   }
+}
+
+type Db = ReturnType<typeof getDb>;
+
+async function linkedWorkspaceId(db: Db) {
+  const [linked] = await db
+    .select({ organizationId: integrations.organizationId })
+    .from(integrations)
+    .orderBy(desc(integrations.updatedAt))
+    .limit(1);
+  return linked?.organizationId ?? null;
+}
+
+async function preferredLocalWorkspace(workspaces: WorkspaceSummary[]) {
+  if (workspaces.length <= 1) return workspaces[0];
+  const db = getDb();
+  const linked = await db
+    .select({ organizationId: integrations.organizationId })
+    .from(integrations)
+    .where(
+      inArray(
+        integrations.organizationId,
+        workspaces.map((workspace) => workspace.id),
+      ),
+    )
+    .orderBy(desc(integrations.updatedAt))
+    .limit(1);
+  return (
+    workspaces.find(
+      (workspace) => workspace.id === linked[0]?.organizationId,
+    ) ?? workspaces[0]
+  );
 }
 
 function slugify(value: string) {

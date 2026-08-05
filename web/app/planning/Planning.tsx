@@ -20,6 +20,7 @@ import {
     Phone,
     Mail,
     Plus,
+    Receipt,
     Search,
     Settings,
     Users,
@@ -706,11 +707,11 @@ export function Planning({
                 </nav>
                 <p className="nav-kicker">ASSISTENTEN</p>
                 <nav className="assistant-nav">
-                    <a href="/"><FileText size={17} /> Offerte</a>
-                    <a className="muted" href="/#inbox"><Inbox size={17} /> Inbox <small>Bèta</small></a>
-                    <a className="muted" href="/#service"><Wrench size={17} /> Service <small>Bèta</small></a>
-                    <a className="assistant-active" href="/planning"><CalendarDays size={17} /> Planning <span className="status-dot" /></a>
-                    <a className="muted" href="/#crm"><Users size={17} /> CRM</a>
+                    <a href="/"><Inbox size={17} /> Inbox</a>
+                    <a href="/?section=quotes"><FileText size={17} /> Offerte</a>
+                    <a className="assistant-active" href="/planning"><CalendarDays size={17} /> Planning</a>
+                    <a className="muted" href="/#factuur"><Receipt size={17} /> Factuur <small>Binnenkort</small></a>
+                    <a className="muted" href="/#crm"><Users size={17} /> CRM <small>Binnenkort</small></a>
                 </nav>
                 <div className="sidebar-bottom">
                     <a href="/settings"><Settings size={17} /> Instellingen</a>

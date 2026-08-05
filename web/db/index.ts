@@ -213,6 +213,7 @@ export async function ensureDatabase() {
     ["extracted_json", "TEXT NOT NULL DEFAULT '{}'"],
     ["quote_json", "TEXT NOT NULL DEFAULT '{}'"],
     ["ai_provider", "TEXT NOT NULL DEFAULT 'rules'"],
+    ["label", "TEXT NOT NULL DEFAULT ''"],
   ] as const;
   for (const [name, definition] of additiveColumns) {
     if (workItemColumns.results.some((column) => column.name === name)) continue;

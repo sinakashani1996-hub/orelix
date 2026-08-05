@@ -109,7 +109,7 @@ export function ThemeProvider({ children }: { children: React.ReactNode }) {
 
         /* ZIJBALK FIX */
         .main-nav a.active, .sidebar-bottom > a.active { background: var(--sidebar-active-bg) !important; color: #ffffff !important; border: none !important; border-radius: 8px !important; font-weight: inherit !important; }
-        .main-nav a.active svg, .sidebar-bottom > a.active svg, .assistant-nav a.assistant-active { color: var(--mint-deep) !important; }
+        .main-nav a.active svg, .sidebar-bottom > a.active svg { color: var(--mint-deep) !important; }
 
         /* MAILBOX KOPPELING FIX */
         .mail-status.disconnected { border-color: var(--line) !important; background: var(--paper) !important; }
@@ -120,7 +120,8 @@ export function ThemeProvider({ children }: { children: React.ReactNode }) {
 
         /* LIJNEN OVERSCHRIJVEN IN DARK MODE */
         .dark-theme .module-row, 
-        .dark-theme .filter-row, 
+        .dark-theme .status-tabs,
+        .dark-theme .work-list-header,
         .dark-theme .work-item, 
         .dark-theme .work-item-skeleton, 
         .dark-theme .module-row-skeleton,
@@ -148,7 +149,7 @@ export function ThemeProvider({ children }: { children: React.ReactNode }) {
         /* TYPOGRAFIE & TEKST CONTRAST */
         .dark-theme h1, .dark-theme h2, .dark-theme h3, .dark-theme strong, .dark-theme b, .dark-theme .se-title { color: #ffffff !important; }
         .dark-theme p:not(.eyebrow), 
-        .dark-theme span:not(.module-tag):not(.nav-count):not(.record-state):not(.beta-state):not(.soon-state):not(.live-state) { 
+        .dark-theme span:not(.module-tag):not(.nav-count):not(.record-state):not(.beta-state):not(.soon-state):not(.live-state):not(.switch-count):not(.chip-count) { 
           color: #a1b0ab !important; 
         }
         .dark-theme .work-copy strong, .dark-theme .work-copy b { color: #ffffff !important; }
@@ -175,8 +176,27 @@ export function ThemeProvider({ children }: { children: React.ReactNode }) {
         .dark-theme .drawer-actions { background: var(--paper) !important; border-top-color: var(--line) !important; }
         .dark-theme pre, .dark-theme textarea, .dark-theme input, .dark-theme select { background: var(--canvas) !important; border-color: var(--line) !important; color: var(--ink) !important; }
         .dark-theme .secondary-button, .dark-theme .contact-btn { background: var(--canvas) !important; border-color: var(--line) !important; color: var(--ink) !important; }
-        .dark-theme .filter-row button { color: var(--muted) !important; }
-        .dark-theme .filter-row button.selected { color: var(--canvas) !important; background: var(--ink) !important; }
+        .dark-theme .quote-action-button { background: var(--canvas) !important; border-color: var(--line) !important; color: var(--ink) !important; }
+        .dark-theme .quote-action-button.success { color: #7fd4ae !important; }
+        .dark-theme .quote-action-button.danger { color: #f0a495 !important; }
+        .dark-theme .quote-actions { border-bottom-color: var(--line) !important; }
+        .dark-theme .work-label { color: #e8cf8e !important; background: #453b1e !important; }
+        .dark-theme .row-menu { background: var(--paper) !important; border-color: var(--line) !important; }
+        .dark-theme .row-menu button { color: var(--ink) !important; }
+        .dark-theme .row-menu button:hover, .dark-theme .row-menu-button:hover { background: var(--canvas) !important; }
+        .dark-theme .row-menu button.danger, .dark-theme .secondary-button.danger { color: #f0a495 !important; }
+        .dark-theme .work-list-header { background: var(--canvas) !important; }
+        .dark-theme .workspace-switch { background: var(--canvas) !important; }
+        .dark-theme .workspace-switch button { color: var(--muted) !important; }
+        .dark-theme .workspace-switch button.active { color: var(--canvas) !important; background: var(--ink) !important; box-shadow: none !important; }
+        .dark-theme .switch-count { background: var(--paper) !important; color: var(--muted) !important; }
+        .dark-theme .workspace-switch button.active .switch-count { background: var(--canvas) !important; color: var(--ink) !important; }
+        .dark-theme .panel-search { border-color: var(--line) !important; background: var(--canvas) !important; color: var(--muted) !important; }
+        .dark-theme .panel-search input { color: var(--ink) !important; }
+        .dark-theme .status-tabs button { color: var(--muted) !important; }
+        .dark-theme .status-tabs button:hover { color: var(--ink) !important; }
+        .dark-theme .status-tabs button.active { border-bottom-color: var(--mint-deep) !important; color: var(--ink) !important; }
+        .dark-theme .status-tabs button.active span { color: var(--muted) !important; }
 
         .dark-theme .metric-icon.coral { background: rgba(239, 68, 68, 0.15) !important; color: #ef4444 !important; }
         .dark-theme .metric-icon.blue { background: rgba(59, 130, 246, 0.15) !important; color: #3b82f6 !important; }
