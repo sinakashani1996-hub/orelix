@@ -4,7 +4,12 @@ import { SettingsPage } from "./Settings";
 
 export const dynamic = "force-dynamic";
 
-export default async function InstellingenRoute() {
+export default async function InstellingenRoute({
+    searchParams,
+}: {
+    searchParams: Promise<{ tab?: string }>;
+}) {
+    const { tab } = await searchParams;
     const context = await getAppContext();
 
     if (!context) {
@@ -25,6 +30,7 @@ export default async function InstellingenRoute() {
             companyAddress={context.organization.companyAddress}
             companyVatNumber={context.organization.companyVatNumber}
             companyEmail={context.organization.companyEmail}
+            initialTab={tab === "workspace" ? "workspace" : undefined}
         />
     );
 }

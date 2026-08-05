@@ -1,7 +1,11 @@
 import { eq } from "drizzle-orm";
 import { getDb } from "../../../db";
 import { organizations } from "../../../db/schema";
-import { getAppContext, createWorkspaceForUser } from "../../../lib/context";
+import {
+  createWorkspaceForUser,
+  findExistingWorkspaceForUser,
+  getAppContext,
+} from "../../../lib/context";
 import { getWorkOS } from "../../../lib/auth";
 
 export async function POST(request: Request) {
@@ -11,6 +15,21 @@ export async function POST(request: Request) {
   }
   if (context.organization) {
     return Response.json({ organization: context.organization });
+  }
+
+  // Onboarding can be reached again after a fresh browser session. Never turn
+  // that into a second WorkOS organization/membership for the same person.
+  // For WorkOS users, only reuse a workspace when the current WorkOS session
+  // still has an active organization. Local D1 rows can outlive a deleted
+  // WorkOS organization and must not resurrect that deleted membership.
+  if (context.user.provider !== "workos" || context.user.providerOrganizationId) {
+    const existingWorkspace = await findExistingWorkspaceForUser(context.user.id);
+    if (existingWorkspace) {
+      return Response.json({
+        organization: existingWorkspace,
+        existing: true,
+      });
+    }
   }
 
   const body = (await request.json()) as { name?: string };

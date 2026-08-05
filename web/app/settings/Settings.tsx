@@ -30,6 +30,7 @@ export function SettingsPage({
                                  companyAddress: initialCompanyAddress,
                                  companyVatNumber: initialCompanyVatNumber,
                                  companyEmail: initialCompanyEmail,
+                                 initialTab,
                              }: {
     displayName: string;
     organizationName: string;
@@ -37,6 +38,7 @@ export function SettingsPage({
     companyAddress: string;
     companyVatNumber: string;
     companyEmail: string;
+    initialTab?: "workspace";
 }) {
     const [localUserName, setLocalUserName] = useState(initialUserName);
     const [localOrgName, setLocalOrgName] = useState(initialOrgName);
@@ -46,7 +48,7 @@ export function SettingsPage({
     const [localCompanyVatNumber, setLocalCompanyVatNumber] = useState(initialCompanyVatNumber);
     const [localCompanyEmail, setLocalCompanyEmail] = useState(initialCompanyEmail);
 
-    const [activeTab, setActiveTab] = useState<"profiel" | "workspace" | "weergave" | "integraties">("weergave");
+    const [activeTab, setActiveTab] = useState<"profiel" | "workspace" | "weergave" | "integraties">(initialTab ?? "weergave");
     const [busy, setBusy] = useState<string | null>(null);
     const [toast, setToast] = useState("");
     const [searchQuery, setSearchQuery] = useState("");
@@ -95,10 +97,13 @@ export function SettingsPage({
 
     async function saveWorkspace() {
         setBusy('workspace');
+        const controller = new AbortController();
+        const timeout = window.setTimeout(() => controller.abort(), 12_000);
         try {
             const response = await fetch('/api/organizations', {
                 method: 'PATCH',
                 headers: { 'content-type': 'application/json' },
+                signal: controller.signal,
                 body: JSON.stringify({
                     name: formOrgName,
                     companyAddress: formAddress,
@@ -106,7 +111,8 @@ export function SettingsPage({
                     companyEmail: formCompanyEmail,
                 }),
             });
-            const data = await response.json() as { error?: string };
+            const payload = await response.text();
+            const data = payload ? JSON.parse(payload) as { error?: string } : {};
             if (!response.ok) throw new Error(data.error || 'Opslaan is niet gelukt');
             setLocalOrgName(formOrgName.trim());
             setLocalCompanyAddress(formAddress.trim());
@@ -114,8 +120,15 @@ export function SettingsPage({
             setLocalCompanyEmail(formCompanyEmail.trim());
             showToast('Workspace en offertegegevens opgeslagen');
         } catch (error) {
-            showToast(error instanceof Error ? error.message : 'Opslaan is niet gelukt');
+            showToast(
+                error instanceof DOMException && error.name === 'AbortError'
+                    ? 'Opslaan duurt te lang. Probeer het opnieuw.'
+                    : error instanceof Error
+                        ? error.message
+                        : 'Opslaan is niet gelukt',
+            );
         } finally {
+            window.clearTimeout(timeout);
             setBusy(null);
         }
     }
@@ -123,7 +136,7 @@ export function SettingsPage({
     const q = searchQuery.toLowerCase();
     const showWeergave = q === "" ? activeTab === 'weergave' : "weergave thema donker licht accentkleur kleuren interface".includes(q);
     const showProfiel = q === "" ? activeTab === 'profiel' : "profiel weergavenaam e-mailadres naam email persoonlijk".includes(q);
-    const showWorkspace = q === "" ? activeTab === 'workspace' : "workspace bedrijf bedrijfsnaam btw-nummer adres hoofdkantoor".includes(q);
+    const showWorkspace = q === "" ? activeTab === 'workspace' : "workspace bedrijf bedrijfsnaam btw-nummer adres hoofdkantoor overzicht organisaties memberships".includes(q);
     const showIntegraties = q === "" ? activeTab === 'integraties' : "integraties api google workspace gmail agenda exact online yuki koppelen".includes(q);
     const isSearching = q.length > 0;
     const noResults = isSearching && !showWeergave && !showProfiel && !showWorkspace && !showIntegraties;

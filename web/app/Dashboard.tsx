@@ -435,7 +435,10 @@ export function Dashboard({
         name: organizationName,
         address: companyAddress,
         vatNumber: companyVatNumber,
-        email: companyEmail || integration?.accountEmail || "",
+        // A connected mailbox is not necessarily the business contact address
+        // that belongs on a legal quote. Quotes may only use the workspace
+        // profile, which is shared by the whole team.
+        email: companyEmail,
       };
       const finalQuote = ["sent", "viewed", "signed"].includes(selected.quoteStatus || "");
       const builder = quote.builder
@@ -453,7 +456,6 @@ export function Dashboard({
     }, 0);
     return () => window.clearTimeout(timer);
   }, [
-    integration?.accountEmail,
     organizationName,
     companyAddress,
     companyVatNumber,
@@ -1549,8 +1551,15 @@ export function Dashboard({
                       <fieldset>
                         <legend>Bedrijfsgegevens</legend>
                         <p className="quote-company-source">
-                          Beheerd in Instellingen › Workspacebeheer
+                          Beheerd in <a href="/settings?tab=workspace">Instellingen › Workspacebeheer</a>
                         </p>
+                        {(!quoteBuilder.companyAddress.trim() ||
+                          !quoteBuilder.companyVatNumber.trim() ||
+                          !quoteBuilder.companyEmail.trim()) && (
+                          <p className="quote-company-warning" role="status">
+                            Vul eerst je adres, btw-nummer en algemeen e-mailadres in bij Workspacebeheer. Deze gegevens worden niet uit je persoonlijke mailbox overgenomen.
+                          </p>
+                        )}
                         <label>
                           <span>Bedrijfsnaam</span>
                           <input
@@ -2142,7 +2151,7 @@ export function Dashboard({
                 autoFocus
                 value={manualQuoteForm.customerName}
                 onChange={(event) => setManualQuoteForm({ ...manualQuoteForm, customerName: event.target.value })}
-                placeholder="Bijvoorbeeld Jan Peeters"
+                placeholder="Bijvoorbeeld klantnaam"
               />
             </label>
             <label>

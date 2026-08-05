@@ -1043,6 +1043,24 @@ a {
   font-weight: 600;
 }
 
+.quote-company-source a {
+  color: #176a52;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
+.quote-company-warning {
+  margin: -3px 0 13px;
+  padding: 9px 10px;
+  border: 1px solid #f0d6c6;
+  border-radius: 9px;
+  background: #fff8f3;
+  color: #925a3d;
+  font-size: 10px;
+  font-weight: 600;
+  line-height: 1.45;
+}
+
 .quote-parties-grid fieldset input[readonly],
 .quote-parties-grid fieldset textarea[readonly] {
   cursor: default;
@@ -1609,12 +1627,20 @@ a {
   right: 0;
   display: flex;
   width: min(980px, 96vw);
-  height: 100vh;
+  height: 100dvh;
+  box-sizing: border-box;
+  padding-bottom: calc(24px + env(safe-area-inset-bottom));
   flex-direction: column;
   overflow-y: auto;
   background: #fbfcfa;
   box-shadow: -24px 0 70px rgba(10, 29, 23, 0.16);
   animation: slide-in 220ms ease-out;
+}
+
+/* The drawer itself is the scroll container. Its sections must retain their
+   full height so the bottom of a long quote can always be reached. */
+.detail-drawer > * {
+  flex-shrink: 0;
 }
 
 @keyframes slide-in {
@@ -2189,8 +2215,8 @@ a {
 
 .message-comparison {
   display: grid;
-  min-height: 0;
-  flex: 1;
+  min-height: 460px;
+  flex: none;
   grid-template-columns: minmax(0, 0.92fr) minmax(0, 1.08fr);
   gap: 14px;
   margin: 22px 26px 0;
@@ -2321,12 +2347,12 @@ a {
   display: grid;
   grid-template-columns: 1fr 1.5fr;
   gap: 10px;
-  padding: 18px 26px 24px;
+  flex: none;
+  margin-top: 22px;
+  padding: 18px 26px 0;
   border-top: 1px solid var(--line);
   background: #fff;
-  position: sticky;
-  z-index: 4;
-  bottom: 0;
+  position: static;
 }
 
 .secondary-button {
@@ -2442,10 +2468,7 @@ a {
     min-height: 360px;
   }
 
-  .drawer-actions {
-    position: sticky;
-    bottom: 0;
-  }
+  .drawer-actions { position: static; }
 
   .quote-ready-card,
   .quote-builder-heading,

@@ -3,16 +3,22 @@ import { ensureDatabase, getDb } from "../db";
 import { members, organizations, organizationModules } from "../db/schema";
 import { getCurrentUser, type OrelixUser } from "./auth";
 
+export type WorkspaceSummary = {
+  id: string;
+  name: string;
+  slug: string;
+  companyAddress: string;
+  companyVatNumber: string;
+  companyEmail: string;
+  role: string;
+  providerOrganizationId: string | null;
+};
+
 export type AppContext = {
   user: OrelixUser;
-  organization: {
-    id: string;
-    name: string;
-    slug: string;
-    companyAddress: string;
-    companyVatNumber: string;
-    companyEmail: string;
-  } | null;
+  organization: Omit<WorkspaceSummary, "role" | "providerOrganizationId"> | null;
+  /** All local workspaces this person can access. Kept for visibility and safe recovery. */
+  workspaces: WorkspaceSummary[];
   role: string | null;
 };
 
@@ -39,7 +45,7 @@ export async function getAppContext(): Promise<AppContext | null> {
   }
 
   const db = getDb();
-  const membership = await db
+  const membershipRows = await db
     .select({
       role: members.role,
       organizationId: organizations.id,
@@ -48,28 +54,62 @@ export async function getAppContext(): Promise<AppContext | null> {
       companyAddress: organizations.companyAddress,
       companyVatNumber: organizations.companyVatNumber,
       companyEmail: organizations.companyEmail,
+      providerOrganizationId: organizations.authProviderOrganizationId,
     })
     .from(members)
     .innerJoin(organizations, eq(members.organizationId, organizations.id))
     .where(eq(members.authUserId, user.id))
-    .limit(1);
+    .limit(50);
 
-  if (!membership[0]) {
-    return { user, organization: null, role: null };
+  const workspaces = membershipRows.map(toWorkspaceSummary);
+  // A WorkOS session is authoritative for the active organization. If that
+  // organization was deleted in WorkOS, do not silently fall back to an old
+  // local D1 workspace and show the user the wrong company's data.
+  const activeWorkspace = user.providerOrganizationId
+    ? workspaces.find(
+        (workspace) => workspace.providerOrganizationId === user.providerOrganizationId,
+      )
+    : workspaces[0];
+
+  if (!activeWorkspace) {
+    return { user, organization: null, workspaces: [], role: null };
   }
 
   return {
     user,
     organization: {
-      id: membership[0].organizationId,
-      name: membership[0].organizationName,
-      slug: membership[0].organizationSlug,
-      companyAddress: membership[0].companyAddress,
-      companyVatNumber: membership[0].companyVatNumber,
-      companyEmail: membership[0].companyEmail,
+      id: activeWorkspace.id,
+      name: activeWorkspace.name,
+      slug: activeWorkspace.slug,
+      companyAddress: activeWorkspace.companyAddress,
+      companyVatNumber: activeWorkspace.companyVatNumber,
+      companyEmail: activeWorkspace.companyEmail,
     },
-    role: membership[0].role,
+    workspaces,
+    role: activeWorkspace.role,
   };
+}
+
+export async function findExistingWorkspaceForUser(userId: string) {
+  await ensureDatabase();
+  const db = getDb();
+  const rows = await db
+    .select({
+      role: members.role,
+      organizationId: organizations.id,
+      organizationName: organizations.name,
+      organizationSlug: organizations.slug,
+      companyAddress: organizations.companyAddress,
+      companyVatNumber: organizations.companyVatNumber,
+      companyEmail: organizations.companyEmail,
+      providerOrganizationId: organizations.authProviderOrganizationId,
+    })
+    .from(members)
+    .innerJoin(organizations, eq(members.organizationId, organizations.id))
+    .where(eq(members.authUserId, userId))
+    .limit(1);
+
+  return rows[0] ? toWorkspaceSummary(rows[0]) : null;
 }
 
 async function ensureWorkOSWorkspaceMembership(user: OrelixUser) {
@@ -191,4 +231,26 @@ function slugify(value: string) {
     .replace(/[^a-z0-9]+/g, "-")
     .replace(/^-|-$/g, "")
     .slice(0, 48);
+}
+
+function toWorkspaceSummary(row: {
+  role: string;
+  organizationId: string;
+  organizationName: string;
+  organizationSlug: string;
+  companyAddress: string;
+  companyVatNumber: string;
+  companyEmail: string;
+  providerOrganizationId: string | null;
+}): WorkspaceSummary {
+  return {
+    id: row.organizationId,
+    name: row.organizationName,
+    slug: row.organizationSlug,
+    companyAddress: row.companyAddress,
+    companyVatNumber: row.companyVatNumber,
+    companyEmail: row.companyEmail,
+    role: row.role,
+    providerOrganizationId: row.providerOrganizationId,
+  };
 }
