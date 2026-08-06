@@ -2,11 +2,21 @@ import { NextResponse } from "next/server";
 import {
   authStateCookieName,
   getWorkOS,
+  isLocalDevRequest,
+  localSignedOutCookieName,
   workosConfig,
 } from "../../lib/auth";
 import { appUrl } from "../../lib/app-url";
 
 export async function GET(request: Request) {
+  // De AuthKit-callback wijst naar productie, dus lokaal aanmelden betekent
+  // simpelweg de demo-gebruiker weer toelaten.
+  if (isLocalDevRequest(new URL(request.url).host)) {
+    const localResponse = NextResponse.redirect(new URL("/", request.url));
+    localResponse.cookies.delete(localSignedOutCookieName());
+    return localResponse;
+  }
+
   const config = workosConfig();
   const workos = getWorkOS();
   if (!config || !workos) {

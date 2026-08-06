@@ -316,14 +316,14 @@ export function SettingsPage({
                     <ChevronDown size={15} />
                 </div>
                 <nav className="main-nav">
-                    <a href="/"><LayoutDashboard size={18} /> Overzicht</a>
+                    <a href="/?section=overview"><LayoutDashboard size={18} /> Overzicht</a>
                     <a href="/#werk"><Zap size={18} /> Werk voor jou</a>
                     <a href="/#dossiers"><MessageSquareText size={18} /> Dossiers</a>
                     <a href="/#contacten"><Users size={18} /> Contacten</a>
                 </nav>
                 <p className="nav-kicker">ASSISTENTEN</p>
                 <nav className="assistant-nav">
-                    <a href="/"><Inbox size={17} /> Inbox</a>
+                    <a href="/?section=inbox"><Inbox size={17} /> Inbox</a>
                     <a href="/?section=quotes"><FileText size={17} /> Offerte</a>
                     <a href="/planning"><CalendarDays size={17} /> Planning</a>
                     <a className="muted" href="/#factuur"><Receipt size={17} /> Factuur <small>Binnenkort</small></a>

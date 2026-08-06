@@ -3,6 +3,7 @@ import { cookies, headers } from "next/headers";
 
 const SESSION_COOKIE = "orelix_session";
 const AUTH_STATE_COOKIE = "orelix_auth_state";
+const LOCAL_SIGNED_OUT_COOKIE = "orelix_local_signed_out";
 
 export type OrelixUser = {
   id: string;
@@ -37,11 +38,13 @@ export async function getCurrentUser(): Promise<OrelixUser | null> {
   const host = requestHeaders.get("host") ?? "";
   // Local development skips WorkOS entirely, even when the production keys
   // from .env.local are present. The AuthKit callback points at app.orelix.be,
-  // so a real login flow can never complete on localhost anyway.
+  // so a real login flow can never complete on localhost anyway. Afmelden zou
+  // daardoor niets doen; de marker hieronder maakt uitloggen lokaal wel mogelijk.
   if (
     process.env.NODE_ENV !== "production" &&
     (host.startsWith("localhost") || host.startsWith("127.0.0.1"))
   ) {
+    if (cookieStore.get(LOCAL_SIGNED_OUT_COOKIE)?.value === "1") return null;
     return {
       id: "local:sina",
       email: "demo@orelix.local",
@@ -110,6 +113,18 @@ export function sessionCookieName() {
 
 export function authStateCookieName() {
   return AUTH_STATE_COOKIE;
+}
+
+export function localSignedOutCookieName() {
+  return LOCAL_SIGNED_OUT_COOKIE;
+}
+
+/** True when this request runs against the local demo bypass. */
+export function isLocalDevRequest(host: string) {
+  return (
+    process.env.NODE_ENV !== "production" &&
+    (host.startsWith("localhost") || host.startsWith("127.0.0.1"))
+  );
 }
 
 function safeDecode(value: string) {

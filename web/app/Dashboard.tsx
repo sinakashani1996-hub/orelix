@@ -182,17 +182,49 @@ export function Dashboard({
   const [items, setItems] = useState<WorkItem[]>([]);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [rowMenuId, setRowMenuId] = useState<string | null>(null);
-  const [workspaceSection, setWorkspaceSection] = useState<"inbox" | "quotes">("inbox");
+  const [workspaceSection, setWorkspaceSection] = useState<
+    "overview" | "inbox" | "quotes"
+  >("overview");
   const [filter, setFilter] = useState("open");
   const [query, setQuery] = useState("");
   const [syncing, setSyncing] = useState(true);
+  const [upcomingEvents, setUpcomingEvents] = useState<number | null>(null);
 
   useEffect(() => {
     const section = new URLSearchParams(window.location.search).get("section");
     if (section === "quotes") {
       setWorkspaceSection("quotes");
       setFilter("all_records");
+    } else if (section === "inbox") {
+      setWorkspaceSection("inbox");
+      setFilter("open");
     }
+  }, []);
+
+  // De planningkaart toont het aantal komende afspraken. Zonder gekoppelde
+  // agenda blijft de teller leeg in plaats van een fout te tonen.
+  useEffect(() => {
+    let cancelled = false;
+    void (async () => {
+      try {
+        const response = await fetch(
+          "/api/integrations/google-calendar?events=upcoming",
+        );
+        if (!response.ok) return;
+        const data = (await response.json()) as {
+          connected?: boolean;
+          events?: unknown[];
+        };
+        if (!cancelled && data.connected) {
+          setUpcomingEvents(data.events?.length ?? 0);
+        }
+      } catch {
+        // Agenda is optioneel; het overzicht werkt ook zonder.
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
   const [syncingInbox, setSyncingInbox] = useState(false);
@@ -423,6 +455,14 @@ export function Dashboard({
           "Google kon de aanmelding niet afronden. Probeer Gmail opnieuw te koppelen.",
       "no-refresh-token":
           "Google gaf geen blijvende toegang. Trek de oude toestemming in en probeer opnieuw.",
+      "setup-required":
+          "Deze omgeving mist de Google-instellingen (GMAIL_CLIENT_ID, GMAIL_CLIENT_SECRET en GMAIL_TOKEN_ENCRYPTION_KEY).",
+      "workspace-required":
+          "Er is nog geen workspace voor dit account. Rond eerst de onboarding af.",
+      "invalid-callback":
+          "Google keerde onvolledig terug. Start het koppelen opnieuw vanaf deze pagina.",
+      "expired-state":
+          "Het koppelen duurde te lang of startte in een ander venster. Probeer het opnieuw.",
       failed:
           "De Gmail-koppeling kon niet worden afgerond. De fout is geregistreerd.",
     };
@@ -564,6 +604,18 @@ export function Dashboard({
   const archivedItems = sectionItems.filter((item) => item.status === "dismissed");
   const receivedToday = inboxItems.filter(
       (item) => belgianDateKey(item.receivedAt) === belgianDateKey(new Date()),
+  ).length;
+
+  // Tellers voor het overzicht blijven aan hun eigen assistent gekoppeld en
+  // veranderen dus niet mee met de rubriek die je op dat moment bekijkt.
+  const inboxOpenCount = inboxItems.filter(
+      (item) => !closedStatuses.includes(item.status),
+  ).length;
+  const quotesOpenCount = quoteItems.filter(
+      (item) => !closedStatuses.includes(item.status),
+  ).length;
+  const quotesApprovalCount = quoteItems.filter(
+      (item) => item.status === "needs_approval",
   ).length;
 
   async function updateStatus(id: string, status: "approved" | "dismissed") {
@@ -1071,6 +1123,33 @@ export function Dashboard({
         .metric-label { font-size: 13px; color: #64748b; font-weight: 600; margin-top: 6px; }
         .metric-badge { font-size: 10px; font-weight: 700; color: #94a3b8; background: #f1f5f9; padding: 4px 8px; border-radius: 6px; }
 
+        /* OVERZICHT: DE DRIE ASSISTENTEN */
+        .assistant-overview-heading { margin-bottom: 20px; }
+        .assistant-overview-heading h2 { font-family: var(--font-display); font-size: 22px; font-weight: 700; color: #111827; margin: 0; letter-spacing: -0.02em; }
+        .assistant-overview-heading p { font-size: 14px; color: #64748b; margin: 6px 0 0; font-weight: 500; }
+        .assistant-card-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 24px; }
+        .assistant-card {
+            display: grid; grid-template-columns: 52px 1fr auto auto; align-items: center;
+            gap: 18px; width: 100%; text-align: left; text-decoration: none;
+            background: #ffffff; border: 1px solid rgba(0,0,0,0.04); border-radius: 20px;
+            padding: 24px; cursor: pointer; font: inherit; color: inherit;
+            box-shadow: 0 10px 30px -10px rgba(0,0,0,0.03);
+            transition: transform 0.3s cubic-bezier(0.16, 1, 0.3, 1), box-shadow 0.3s ease, border-color 0.3s ease;
+        }
+        .assistant-card:hover { transform: translateY(-4px); box-shadow: 0 20px 40px -12px rgba(16, 185, 129, 0.12); border-color: rgba(16, 185, 129, 0.2); }
+        .assistant-card-icon { width: 52px; height: 52px; border-radius: 15px; display: grid; place-items: center; }
+        .assistant-card-icon.inbox { background: #eff6ff; color: #3b82f6; }
+        .assistant-card-icon.quotes { background: #ecfdf5; color: #10b981; }
+        .assistant-card-icon.planning { background: #f3e8ff; color: #8b5cf6; }
+        .assistant-card-body { display: flex; flex-direction: column; gap: 4px; min-width: 0; }
+        .assistant-card-body strong { font-family: var(--font-display); font-size: 17px; font-weight: 700; color: #111827; letter-spacing: -0.01em; }
+        .assistant-card-body small { font-size: 12px; color: #64748b; font-weight: 500; line-height: 1.5; }
+        .assistant-card-meta { display: flex; flex-direction: column; align-items: flex-end; }
+        .assistant-card-value { font-family: var(--font-display); font-size: 26px; font-weight: 700; color: #111827; line-height: 1; }
+        .assistant-card-unit { font-size: 11px; color: #94a3b8; font-weight: 600; margin-top: 4px; white-space: nowrap; }
+        .assistant-card-arrow { color: #cbd5e1; transition: color 0.2s ease, transform 0.2s ease; }
+        .assistant-card:hover .assistant-card-arrow { color: var(--mint-deep); transform: translateX(3px); }
+
         /* INBOX & TABS CONTAINER */
         .pro-inbox-container {
             background: #ffffff; border: 1px solid rgba(0,0,0,0.05); border-radius: 24px;
@@ -1119,18 +1198,21 @@ export function Dashboard({
           .pro-metric-grid { grid-template-columns: 1fr 1fr; gap: 12px; margin-bottom: 32px; }
           .pro-inbox-header { padding: 20px 20px 0; }
           .pro-tabs { padding: 0 20px; gap: 20px; }
+          .assistant-card-grid { grid-template-columns: 1fr; gap: 14px; }
+          .assistant-card { padding: 18px; gap: 14px; }
         }
       `}</style>
 
         {/* --- GLOBALE NAVIGATIE INJECTEREN --- */}
         <Navigation
-            activePath={workspaceSection}
+            activePath={workspaceSection === "overview" ? "dashboard" : workspaceSection}
             organizationName={organizationName}
             userName={userName}
-            openItemsCount={openItems.length}
+            openItemsCount={inboxOpenCount}
             onSectionChange={(section) => {
               setWorkspaceSection(section);
               setFilter(section === "quotes" ? "all_records" : "open");
+              setSelectedId(null);
             }}
         />
 
@@ -1299,6 +1381,95 @@ export function Dashboard({
               </article>
             </div>
 
+            {workspaceSection === "overview" && (
+                <section className="assistant-overview" aria-label="Jouw assistenten">
+                  <div className="assistant-overview-heading">
+                    <h2>Jouw assistenten</h2>
+                    <p>Kies waar je verder wil werken.</p>
+                  </div>
+
+                  <div className="assistant-card-grid">
+                    <button
+                        type="button"
+                        className="assistant-card"
+                        onClick={() => {
+                          setWorkspaceSection("inbox");
+                          setFilter("open");
+                        }}
+                    >
+                      <span className="assistant-card-icon inbox">
+                        <Inbox size={22} strokeWidth={2.4} />
+                      </span>
+                      <span className="assistant-card-body">
+                        <strong>Inbox</strong>
+                        <small>
+                          Alles wat binnenkomt, automatisch herkend en gelabeld.
+                        </small>
+                      </span>
+                      <span className="assistant-card-meta">
+                        <span className="assistant-card-value">
+                          {syncing ? "—" : inboxOpenCount}
+                        </span>
+                        <span className="assistant-card-unit">openstaand</span>
+                      </span>
+                      <ArrowRight size={17} className="assistant-card-arrow" />
+                    </button>
+
+                    <button
+                        type="button"
+                        className="assistant-card"
+                        onClick={() => {
+                          setWorkspaceSection("quotes");
+                          setFilter("all_records");
+                        }}
+                    >
+                      <span className="assistant-card-icon quotes">
+                        <FileText size={22} strokeWidth={2.4} />
+                      </span>
+                      <span className="assistant-card-body">
+                        <strong>Offertes</strong>
+                        <small>
+                          Van aanvraag tot ondertekening, in één dossier.
+                        </small>
+                      </span>
+                      <span className="assistant-card-meta">
+                        <span className="assistant-card-value">
+                          {syncing ? "—" : quotesOpenCount}
+                        </span>
+                        <span className="assistant-card-unit">
+                          {quotesApprovalCount > 0
+                              ? `${quotesApprovalCount} te keuren`
+                              : "openstaand"}
+                        </span>
+                      </span>
+                      <ArrowRight size={17} className="assistant-card-arrow" />
+                    </button>
+
+                    <a className="assistant-card" href="/planning">
+                      <span className="assistant-card-icon planning">
+                        <CalendarDays size={22} strokeWidth={2.4} />
+                      </span>
+                      <span className="assistant-card-body">
+                        <strong>Planning</strong>
+                        <small>
+                          Afspraken en plaatsingen, gekoppeld aan je agenda.
+                        </small>
+                      </span>
+                      <span className="assistant-card-meta">
+                        <span className="assistant-card-value">
+                          {upcomingEvents === null ? "—" : upcomingEvents}
+                        </span>
+                        <span className="assistant-card-unit">
+                          {upcomingEvents === null ? "geen agenda" : "gepland"}
+                        </span>
+                      </span>
+                      <ArrowRight size={17} className="assistant-card-arrow" />
+                    </a>
+                  </div>
+                </section>
+            )}
+
+            {workspaceSection !== "overview" && (
             <div className="dashboard-grid">
               <section className="work-panel" id="werk">
                 <div className="pro-inbox-container">
@@ -1542,6 +1713,7 @@ export function Dashboard({
                 </div>
               </section>
             </div>
+            )}
           </div>
         </main>
 

@@ -26,7 +26,7 @@ interface NavigationProps {
     organizationName: string;
     userName: string;
     openItemsCount?: number;
-    onSectionChange?: (section: "inbox" | "quotes") => void;
+    onSectionChange?: (section: "overview" | "inbox" | "quotes") => void;
 }
 
 export function Navigation({
@@ -44,7 +44,7 @@ export function Navigation({
         window.dispatchEvent(event);
     };
 
-    const handleSectionClick = (e: React.MouseEvent, section: "inbox" | "quotes") => {
+    const handleSectionClick = (e: React.MouseEvent, section: "overview" | "inbox" | "quotes") => {
         if (onSectionChange) {
             e.preventDefault();
             onSectionChange(section);
@@ -91,8 +91,11 @@ export function Navigation({
                 </div>
 
                 <nav className="main-nav" aria-label="Hoofdnavigatie">
-                    {/* OVERZICHT is nu 100% onafhankelijk. Het triggert de Inbox niet meer. */}
-                    <a className={activePath === "dashboard" ? "active" : ""} href="/#overzicht">
+                    <a
+                        className={activePath === "dashboard" ? "active" : ""}
+                        href="/?section=overview"
+                        onClick={(e) => handleSectionClick(e, "overview")}
+                    >
                         <LayoutDashboard size={18} /> Overzicht
                     </a>
                     <a href="/#werk">
@@ -150,8 +153,12 @@ export function Navigation({
 
             {/* --- MOBILE BOTTOM NAV --- */}
             <nav className="mobile-bottom-nav">
-                <a href="/#overzicht" className={`mobile-nav-item ${activePath === "dashboard" ? "active" : ""}`}>
-                    <LayoutDashboard size={22} /><span>Dashboard</span>
+                <a
+                    href="/?section=overview"
+                    className={`mobile-nav-item ${activePath === "dashboard" ? "active" : ""}`}
+                    onClick={(e) => handleSectionClick(e, "overview")}
+                >
+                    <LayoutDashboard size={22} /><span>Overzicht</span>
                 </a>
                 <a href="/?section=inbox" className={`mobile-nav-item ${activePath === "inbox" ? "active" : ""}`} onClick={(e) => handleSectionClick(e, "inbox")}>
                     <Inbox size={22} /><span>Inbox</span>
