@@ -20,13 +20,11 @@ export default async function InstellingenRoute({
         redirect("/");
     }
 
-    const displayName = context.user.name.split(" ")[0] || "daar";
-
     return (
         <SettingsPage
-            displayName={displayName}
             organizationName={context.organization.name}
             userName={context.user.name}
+            userEmail={context.user.email}
             companyAddress={context.organization.companyAddress}
             companyVatNumber={context.organization.companyVatNumber}
             companyEmail={context.organization.companyEmail}

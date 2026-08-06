@@ -1,11 +1,12 @@
 "use client";
 
 import {
-    Bell, CalendarDays, CheckCircle2, ChevronDown, CircleHelp, FileText,
-    Inbox, LayoutDashboard, MessageSquareText, MoreHorizontal, Search, Settings,
-    Users, Receipt, Zap, User, Building2, Link as LinkIcon, ShieldCheck, Mail, Moon, Sun, Palette, Check
+    Bell, CalendarDays, CheckCircle2, Search,
+    User, Building2, Link as LinkIcon, ShieldCheck, Mail, Moon, Sun, Palette, Check
 } from "lucide-react";
 import { useState, useEffect, FormEvent } from "react";
+import { Navigation } from "../../components/Navigation";
+import { formatQuoteNumber } from "../../lib/quote-numbering";
 
 function initials(name: string) {
     if (!name) return "??";
@@ -24,9 +25,9 @@ const THEME_COLORS = [
 ];
 
 export function SettingsPage({
-                                 displayName: initialDisplayName,
                                  organizationName: initialOrgName,
                                  userName: initialUserName,
+                                 userEmail: initialUserEmail,
                                  companyAddress: initialCompanyAddress,
                                  companyVatNumber: initialCompanyVatNumber,
                                  companyEmail: initialCompanyEmail,
@@ -37,9 +38,9 @@ export function SettingsPage({
                                  quoteNumberResetYearly: initialQuoteNumberResetYearly,
                                  initialTab,
                              }: {
-    displayName: string;
     organizationName: string;
     userName: string;
+    userEmail: string;
     companyAddress: string;
     companyVatNumber: string;
     companyEmail: string;
@@ -50,10 +51,9 @@ export function SettingsPage({
     quoteNumberResetYearly: boolean;
     initialTab?: "workspace";
 }) {
-    const [localUserName, setLocalUserName] = useState(initialUserName);
+    const localUserName = initialUserName;
+    const localEmail = initialUserEmail;
     const [localOrgName, setLocalOrgName] = useState(initialOrgName);
-    const [localDisplayName, setLocalDisplayName] = useState(initialDisplayName);
-    const [localEmail, setLocalEmail] = useState("info@orelix-office.com");
     const [localCompanyAddress, setLocalCompanyAddress] = useState(initialCompanyAddress);
     const [localCompanyVatNumber, setLocalCompanyVatNumber] = useState(initialCompanyVatNumber);
     const [localCompanyEmail, setLocalCompanyEmail] = useState(initialCompanyEmail);
@@ -68,8 +68,6 @@ export function SettingsPage({
     const [toast, setToast] = useState("");
     const [searchQuery, setSearchQuery] = useState("");
 
-    const [formUserName, setFormUserName] = useState(localUserName);
-    const [formEmail, setFormEmail] = useState(localEmail);
     const [formOrgName, setFormOrgName] = useState(localOrgName);
     const [formVat, setFormVat] = useState(initialCompanyVatNumber);
     const [formAddress, setFormAddress] = useState(initialCompanyAddress);
@@ -105,14 +103,6 @@ export function SettingsPage({
         setActiveColorId(colorId);
         localStorage.setItem("orelix_color", colorId);
         window.dispatchEvent(new Event("theme-change"));
-    }
-
-    async function saveField(fieldId: string, action: () => void, successMsg: string) {
-        setBusy(fieldId);
-        await new Promise(resolve => setTimeout(resolve, 500));
-        action();
-        setBusy(null);
-        showToast(successMsg);
     }
 
     async function saveWorkspace() {
@@ -181,6 +171,24 @@ export function SettingsPage({
         || formQuoteNumberStart !== localQuoteNumberStart
         || formQuoteNumberResetYearly !== localQuoteNumberResetYearly;
 
+    const currentYear = new Date().getFullYear();
+    const previewCurrent = formatQuoteNumber(
+        {
+            prefix: formQuoteNumberPrefix,
+            nextNumber: formQuoteNumberNext,
+            resetYearly: formQuoteNumberResetYearly,
+        },
+        currentYear,
+    );
+    const previewNextYear = formatQuoteNumber(
+        {
+            prefix: formQuoteNumberPrefix,
+            nextNumber: formQuoteNumberStart,
+            resetYearly: true,
+        },
+        currentYear + 1,
+    );
+
     return (
         <div className="app-shell">
             <style>{`
@@ -218,6 +226,31 @@ export function SettingsPage({
         .input-group label { display: block; font-size: 12px; font-weight: 600; color: var(--ink); margin-bottom: 8px; }
         .input-group input, .input-group textarea { width: 100%; padding: 10px 14px; border-radius: 8px; border: 1px solid var(--line); background: var(--canvas); color: var(--ink); font-size: 13px; outline: none; font-family: var(--font-body); transition: border-color 0.2s, box-shadow 0.2s; }
         .input-group input:focus, .input-group textarea:focus { border-color: var(--mint-deep); box-shadow: 0 0 0 3px rgba(16, 185, 129, 0.1); }
+
+        .numbering-row { display: grid; grid-template-columns: 1fr 200px; gap: 16px; margin-bottom: 18px; }
+        .field-hint { display: block; margin-top: 6px; font-size: 11px; line-height: 1.45; color: var(--muted); }
+        .numbering-toggle { display: flex; align-items: flex-start; gap: 10px; padding: 14px; border: 1px solid var(--line); border-radius: 10px; background: var(--canvas); cursor: pointer; }
+        .numbering-toggle input { margin-top: 2px; flex-shrink: 0; }
+        .numbering-toggle strong { display: block; font-size: 13px; font-weight: 600; color: var(--ink); }
+        .numbering-toggle small { display: block; margin-top: 3px; font-size: 11px; line-height: 1.45; color: var(--muted); }
+        .numbering-start { margin-top: 16px; max-width: 260px; transition: opacity 0.2s ease; }
+        .numbering-start.is-off { opacity: 0.45; }
+        .numbering-start input:disabled { cursor: not-allowed; }
+        .numbering-preview { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 20px; }
+        .numbering-preview span { flex: 1; min-width: 170px; padding: 12px 14px; border-radius: 10px; background: var(--canvas); border: 1px solid var(--line); font-size: 11px; font-weight: 600; color: var(--muted); }
+        .numbering-preview strong { display: block; margin-top: 5px; font-family: var(--font-display); font-size: 15px; letter-spacing: 0.01em; color: var(--ink); }
+        .numbering-manual-note { margin: 0; padding: 14px; border: 1px solid var(--line); border-radius: 10px; background: var(--canvas); font-size: 12px; line-height: 1.55; color: var(--muted); }
+
+        .account-identity { display: flex; align-items: center; gap: 14px; padding-bottom: 20px; margin-bottom: 4px; border-bottom: 1px solid var(--line); }
+        .account-avatar { display: grid; place-items: center; width: 44px; height: 44px; border-radius: 12px; background: var(--mint-deep); color: #fff; font-size: 14px; font-weight: 700; flex-shrink: 0; }
+        .account-identity strong { display: block; font-size: 14px; color: var(--ink); }
+        .account-identity small { display: block; font-size: 12px; color: var(--muted); margin-top: 2px; }
+        .account-role { display: inline-flex; align-items: center; gap: 5px; margin-left: auto; padding: 5px 10px; border-radius: 20px; background: var(--canvas); border: 1px solid var(--line); font-size: 11px; font-weight: 600; color: var(--muted); flex-shrink: 0; }
+        .account-field { display: flex; align-items: center; justify-content: space-between; gap: 16px; padding: 14px 0; border-bottom: 1px solid var(--line); }
+        .account-field span { font-size: 12px; font-weight: 600; color: var(--muted); }
+        .account-field strong { font-size: 13px; color: var(--ink); font-weight: 600; text-align: right; word-break: break-word; }
+        .account-note { display: flex; align-items: flex-start; gap: 10px; margin: 18px 0 0; font-size: 12px; line-height: 1.55; color: var(--muted); }
+        .account-note svg { flex-shrink: 0; margin-top: 2px; }
 
         .save-footer { display: flex; align-items: center; justify-content: flex-end; gap: 16px; margin-top: 24px; padding-top: 20px; border-top: 1px solid var(--line); }
         .save-footer span { font-size: 12px; color: var(--muted); }
@@ -283,8 +316,6 @@ export function SettingsPage({
         .btn-outline { padding: 8px 16px; background: transparent; border: 1px solid var(--line); color: var(--ink); border-radius: 8px; font-size: 12px; font-weight: 600; cursor: pointer; }
         .btn-outline:hover { background: var(--canvas); }
 
-        .mobile-bottom-nav { display: none; }
-
         @media (max-width: 900px) {
           .settings-container { flex-direction: column; gap: 32px; }
           .settings-nav { width: 100%; flex-direction: row; overflow-x: auto; position: static; padding-bottom: 8px; }
@@ -292,55 +323,18 @@ export function SettingsPage({
         }
 
         @media (max-width: 760px) {
-          .sidebar { display: none !important; }
           .main-content { margin-left: 0; padding-bottom: 90px !important; }
-          .topbar { padding: 0 16px; }
+          .topbar { padding: 0 16px; height: 70px; }
           .content-wrap { padding-top: 20px; width: calc(100% - 32px); }
           .theme-options-wrapper { flex-direction: column; }
-          
-          .mobile-bottom-nav { display: flex; position: fixed; bottom: 0; left: 0; right: 0; height: 70px; background: var(--paper); border-top: 1px solid var(--line); justify-content: space-around; align-items: center; z-index: 90; padding-bottom: env(safe-area-inset-bottom); }
-          .mobile-nav-item { display: flex; flex-direction: column; align-items: center; gap: 4px; color: var(--muted); text-decoration: none; font-size: 10px; font-weight: 600; flex: 1; }
-          .mobile-nav-item.active { color: var(--mint-deep); }
-          .mobile-nav-item.active svg { color: var(--mint-deep); fill: var(--mint); }
         }
       `}</style>
 
-            <aside className="sidebar">
-                <div className="brand">
-                    <span className="brand-mark">O</span>
-                    <span>Orelix <strong>Office</strong></span>
-                </div>
-                <div className="workspace-switcher">
-                    <span className="workspace-logo" style={{ background: 'var(--mint-deep)', color: '#ffffff' }}>{initials(localOrgName)}</span>
-                    <span><strong>{localOrgName}</strong><small>Hoofdworkspace</small></span>
-                    <ChevronDown size={15} />
-                </div>
-                <nav className="main-nav">
-                    <a href="/?section=overview"><LayoutDashboard size={18} /> Overzicht</a>
-                    <a href="/#werk"><Zap size={18} /> Werk voor jou</a>
-                    <a href="/#dossiers"><MessageSquareText size={18} /> Dossiers</a>
-                    <a href="/#contacten"><Users size={18} /> Contacten</a>
-                </nav>
-                <p className="nav-kicker">ASSISTENTEN</p>
-                <nav className="assistant-nav">
-                    <a href="/?section=inbox"><Inbox size={17} /> Inbox</a>
-                    <a href="/?section=quotes"><FileText size={17} /> Offerte</a>
-                    <a href="/planning"><CalendarDays size={17} /> Planning</a>
-                    <a className="muted" href="/#factuur"><Receipt size={17} /> Factuur <small>Binnenkort</small></a>
-                    <a className="muted" href="/#crm"><Users size={17} /> CRM <small>Binnenkort</small></a>
-                </nav>
-                <div className="sidebar-bottom">
-                    <a href="/settings" className="active">
-                        <Settings size={17} /> Instellingen
-                    </a>
-                    <a href="/#help"><CircleHelp size={17} /> Help & feedback</a>
-                    <div className="profile">
-                        <span className="profile-avatar" style={{ background: 'var(--mint-deep)' }}>{initials(localUserName)}</span>
-                        <span><strong>{localUserName}</strong><small>Administrator</small></span>
-                        <MoreHorizontal size={17} />
-                    </div>
-                </div>
-            </aside>
+            <Navigation
+                activePath="settings"
+                organizationName={localOrgName}
+                userName={localUserName}
+            />
 
             <main className="main-content">
                 <header className="topbar">
@@ -467,30 +461,33 @@ export function SettingsPage({
                                     {!isSearching && (
                                         <div className="settings-content-header">
                                             <h2>Persoonlijk Profiel</h2>
-                                            <p>Beheer je persoonlijke instellingen en contactgegevens.</p>
+                                            <p>De gegevens waarmee je aanmeldt en waarmee collega's je herkennen.</p>
                                         </div>
                                     )}
                                     <div className="setting-block">
-                                        <form className="setting-card-inner" onSubmit={(e) => { e.preventDefault(); saveField('profile', () => { setLocalUserName(formUserName); setLocalDisplayName(formUserName.split(" ")[0]); setLocalEmail(formEmail); }, "Profiel succesvol bijgewerkt"); }}>
-                                            <div className="input-group">
-                                                <label>Weergavenaam</label>
-                                                <input value={formUserName} onChange={(e) => setFormUserName(e.target.value)} required />
+                                        <div className="setting-card-inner">
+                                            <div className="account-identity">
+                                                <span className="account-avatar">{initials(localUserName)}</span>
+                                                <div>
+                                                    <strong>{localUserName}</strong>
+                                                    <small>{localEmail}</small>
+                                                </div>
+                                                <span className="account-role"><ShieldCheck size={13} /> Administrator</span>
                                             </div>
-                                            <div className="input-group" style={{ marginBottom: 0 }}>
-                                                <label>E-mailadres</label>
-                                                <input type="email" value={formEmail} onChange={(e) => setFormEmail(e.target.value)} required />
+                                            <div className="account-field">
+                                                <span>Weergavenaam</span>
+                                                <strong>{localUserName}</strong>
                                             </div>
-                                            <div className="save-footer">
-                                                <span>Beide velden zijn vereist voor login.</span>
-                                                <button
-                                                    type="submit"
-                                                    className="btn-save"
-                                                    disabled={busy === 'profile' || (formUserName === localUserName && formEmail === localEmail)}
-                                                >
-                                                    {busy === 'profile' ? "Opslaan..." : "Wijzigingen opslaan"}
-                                                </button>
+                                            <div className="account-field">
+                                                <span>E-mailadres</span>
+                                                <strong>{localEmail}</strong>
                                             </div>
-                                        </form>
+                                            <p className="account-note">
+                                                <Mail size={14} />
+                                                Je naam en e-mailadres komen uit het account waarmee je inlogt. Wijzig
+                                                ze daar; ze worden hier bij je volgende aanmelding overgenomen.
+                                            </p>
+                                        </div>
                                     </div>
                                 </div>
                             )}
@@ -536,27 +533,66 @@ export function SettingsPage({
                                                         <option value="manual">Handmatig per offerte</option>
                                                     </select>
                                                 </div>
-                                                <div style={{ display: 'grid', gridTemplateColumns: '1fr 160px 160px', gap: 12 }}>
-                                                    <div className="input-group" style={{ marginBottom: 12 }}>
-                                                        <label>Voorvoegsel</label>
-                                                        <input value={formQuoteNumberPrefix} onChange={(e) => setFormQuoteNumberPrefix(e.target.value.toUpperCase())} maxLength={18} placeholder="OFF" />
-                                                    </div>
-                                                    <div className="input-group" style={{ marginBottom: 12 }}>
-                                                        <label>Volgend nummer</label>
-                                                        <input type="number" min={1} max={9999999} value={formQuoteNumberNext} onChange={(e) => setFormQuoteNumberNext(Math.max(1, Number(e.target.value) || 1))} />
-                                                    </div>
-                                                    <div className="input-group" style={{ marginBottom: 12 }}>
-                                                        <label>Startnummer</label>
-                                                        <input type="number" min={1} max={9999999} value={formQuoteNumberStart} onChange={(e) => setFormQuoteNumberStart(Math.max(1, Number(e.target.value) || 1))} />
-                                                    </div>
-                                                </div>
-                                                <label style={{ display: 'flex', alignItems: 'center', gap: 9, color: 'var(--ink)', fontSize: 13, cursor: 'pointer' }}>
-                                                    <input type="checkbox" checked={formQuoteNumberResetYearly} onChange={(e) => setFormQuoteNumberResetYearly(e.target.checked)} />
-                                                    Jaarlijks opnieuw beginnen vanaf dit nummer
-                                                </label>
-                                                <p style={{ margin: '8px 0 0', color: 'var(--muted)', fontSize: 12 }}>
-                                                    Voorbeeld: {formQuoteNumberPrefix.trim().toUpperCase() || 'OFF'}{formQuoteNumberResetYearly ? `-${new Date().getFullYear()}` : ''}-{String(formQuoteNumberNext || 1).padStart(4, '0')}
-                                                </p>
+                                                {formQuoteNumberMode === 'manual' ? (
+                                                    <p className="numbering-manual-note">
+                                                        Je typt bij elke offerte zelf een nummer. Voorvoegsel en tellers
+                                                        blijven bewaard, maar Orelix gebruikt ze pas weer zodra je op
+                                                        automatisch overschakelt.
+                                                    </p>
+                                                ) : (
+                                                    <>
+                                                        <div className="numbering-row">
+                                                            <div className="input-group" style={{ marginBottom: 0 }}>
+                                                                <label>Voorvoegsel</label>
+                                                                <input value={formQuoteNumberPrefix} onChange={(e) => setFormQuoteNumberPrefix(e.target.value.toUpperCase())} maxLength={18} placeholder="OFF" />
+                                                                <small className="field-hint">Staat vooraan elk nummer.</small>
+                                                            </div>
+                                                            <div className="input-group" style={{ marginBottom: 0 }}>
+                                                                <label>Volgend nummer</label>
+                                                                <input type="number" min={1} max={9999999} value={formQuoteNumberNext} onChange={(e) => setFormQuoteNumberNext(Math.max(1, Number(e.target.value) || 1))} />
+                                                                <small className="field-hint">De offerte die je nu maakt, krijgt dit nummer.</small>
+                                                            </div>
+                                                        </div>
+
+                                                        <label className="numbering-toggle">
+                                                            <input type="checkbox" checked={formQuoteNumberResetYearly} onChange={(e) => setFormQuoteNumberResetYearly(e.target.checked)} />
+                                                            <span>
+                                                                <strong>Elk jaar opnieuw beginnen met tellen</strong>
+                                                                <small>Zet het jaartal in het nummer en laat de teller op 1 januari herstarten.</small>
+                                                            </span>
+                                                        </label>
+
+                                                        <div className={`input-group numbering-start ${formQuoteNumberResetYearly ? '' : 'is-off'}`} style={{ marginBottom: 0 }}>
+                                                            <label>Eerste nummer van een nieuw jaar</label>
+                                                            <input
+                                                                type="number"
+                                                                min={1}
+                                                                max={9999999}
+                                                                value={formQuoteNumberStart}
+                                                                disabled={!formQuoteNumberResetYearly}
+                                                                onChange={(e) => setFormQuoteNumberStart(Math.max(1, Number(e.target.value) || 1))}
+                                                            />
+                                                            <small className="field-hint">
+                                                                {formQuoteNumberResetYearly
+                                                                    ? `Waar de teller op 1 januari ${currentYear + 1} naartoe springt.`
+                                                                    : 'Alleen van toepassing wanneer je jaarlijks opnieuw begint.'}
+                                                            </small>
+                                                        </div>
+
+                                                        <div className="numbering-preview">
+                                                            <span>
+                                                                Volgende offerte
+                                                                <strong>{previewCurrent}</strong>
+                                                            </span>
+                                                            {formQuoteNumberResetYearly && (
+                                                                <span>
+                                                                    Eerste in januari {currentYear + 1}
+                                                                    <strong>{previewNextYear}</strong>
+                                                                </span>
+                                                            )}
+                                                        </div>
+                                                    </>
+                                                )}
                                             </div>
                                             <div className="save-footer">
                                                 <span>Wordt gebruikt voor documentgeneratie en facturatie.</span>
@@ -630,14 +666,6 @@ export function SettingsPage({
                     <CheckCircle2 size={18} /> {toast}
                 </div>
             )}
-
-            <nav className="mobile-bottom-nav">
-                <a href="/" className="mobile-nav-item"><LayoutDashboard size={22} /><span>Dashboard</span></a>
-                <a href="#inbox" className="mobile-nav-item" onClick={(e) => { e.preventDefault(); setToast("Inbox opent binnenkort"); }}><Inbox size={22} /><span>Inbox</span></a>
-                <a href="/planning" className="mobile-nav-item"><CalendarDays size={22} /><span>Planning</span></a>
-                <a href="#crm" className="mobile-nav-item" onClick={(e) => { e.preventDefault(); setToast("CRM opent binnenkort"); }}><Users size={22} /><span>Klanten</span></a>
-                <a href="/settings" className="mobile-nav-item active"><Settings size={22} /><span>Menu</span></a>
-            </nav>
 
         </div>
     );

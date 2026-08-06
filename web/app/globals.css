@@ -461,16 +461,19 @@ a {
   margin-left: 244px;
 }
 
+/* Hoogte en horizontale ruimte volgen .pro-header op het dashboard, zodat de
+   pagina niet verspringt wanneer je tussen Inbox, Offertes, Planning en
+   Instellingen wisselt. */
 .topbar {
   position: sticky;
   top: 0;
   z-index: 20;
   display: flex;
-  height: 70px;
+  height: 80px;
   align-items: center;
   justify-content: flex-end;
   gap: 12px;
-  padding: 0 34px;
+  padding: 0 40px;
   border-bottom: 1px solid rgba(220, 224, 217, 0.86);
   background: rgba(246, 247, 243, 0.91);
   backdrop-filter: blur(16px);
@@ -555,9 +558,9 @@ a {
 }
 
 .content-wrap {
-  width: min(1240px, calc(100% - 64px));
+  width: min(1320px, calc(100% - 80px));
   margin: 0 auto;
-  padding: 43px 0 60px;
+  padding: 40px 0 80px;
 }
 
 .welcome-row {

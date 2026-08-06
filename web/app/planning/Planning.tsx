@@ -214,6 +214,7 @@ export function Planning({
 }) {
     const [query, setQuery] = useState("");
     const [filterWeek, setFilterWeek] = useState<"this_week" | "next_week" | "all">("this_week");
+    const [planningView, setPlanningView] = useState<"upcoming" | "past">("upcoming");
 
     const [calendarConnected, setCalendarConnected] = useState(false);
     const [calendarEmail, setCalendarEmail] = useState("");
@@ -526,6 +527,26 @@ export function Planning({
         return groups;
     }, [events, query]);
 
+    const scheduledCount = useMemo(
+        () => events.filter((evt) => evt.status === "scheduled").length,
+        [events],
+    );
+    const completedCount = useMemo(
+        () => events.filter((evt) => evt.status === "completed").length,
+        [events],
+    );
+    const missedCount = useMemo(
+        () => events.filter((evt) => evt.status === "missed").length,
+        [events],
+    );
+    const thisWeekCount = useMemo(
+        () =>
+            events.filter(
+                (evt) => evt.status === "scheduled" && getDaysDifference(evt.rawDate) <= 7,
+            ).length,
+        [events],
+    );
+
     return (
         <div className="app-shell">
             <style>{`
@@ -533,10 +554,31 @@ export function Planning({
         button:not(.draggable-fab) { transition: transform 0.2s cubic-bezier(0.16, 1, 0.3, 1), background-color 0.2s ease, box-shadow 0.2s ease, border-color 0.2s ease; }
         button:active:not(:disabled):not(.draggable-fab) { transform: scale(0.96) !important; }
 
-        .planning-hero { display: grid; grid-template-columns: 1fr auto; gap: 20px; background: var(--paper); padding: 30px; border-radius: 16px; border: 1px solid var(--line); margin-bottom: 32px; }
+        .planning-hero { display: grid; grid-template-columns: 1fr auto; gap: 20px; background: var(--paper); padding: 30px; border-radius: 16px; border: 1px solid var(--line); margin-bottom: 24px; }
         .planning-hero h1 { color: var(--ink); }
         .planning-hero p.eyebrow { color: var(--mint-deep); }
         .planning-hero p:not(.eyebrow) { color: var(--muted); }
+
+        .planning-pulse { display: flex; flex-wrap: wrap; align-items: center; gap: 18px; }
+        .planning-pulse-item { display: inline-flex; align-items: center; gap: 7px; font-size: 12px; font-weight: 600; color: var(--muted); }
+        .planning-pulse-dot { width: 8px; height: 8px; border-radius: 50%; }
+        .planning-pulse-dot.scheduled { background: var(--mint-deep); }
+        .planning-pulse-dot.open { background: #f59e0b; }
+        .planning-pulse-dot.missed { background: #ef4444; }
+        .planning-pulse-dot.done { background: var(--muted); }
+
+        .planning-tabs { display: flex; align-items: center; gap: 8px; margin-bottom: 28px; }
+        .planning-tabs button {
+          display: inline-flex; align-items: center; gap: 8px;
+          padding: 9px 14px; border-radius: 10px; cursor: pointer;
+          background: transparent; border: 1px solid transparent;
+          font-family: inherit; font-size: 13px; font-weight: 600; color: var(--muted);
+          transition: background 0.2s ease, color 0.2s ease, border-color 0.2s ease;
+        }
+        .planning-tabs button:hover { color: var(--ink); background: var(--canvas); }
+        .planning-tabs button.selected { color: var(--mint-deep); background: rgba(16, 185, 129, 0.1); border-color: rgba(16, 185, 129, 0.25); }
+        .planning-tab-count { padding: 1px 7px; border-radius: 10px; background: var(--line); color: var(--muted); font-size: 11px; font-weight: 700; }
+        .planning-tabs button.selected .planning-tab-count { background: rgba(16, 185, 129, 0.18); color: var(--mint-deep); }
 
         /* LIJSTEN & HEADERS */
         .section-heading-row { display: flex; justify-content: space-between; align-items: flex-end; padding: 0 0 16px; margin-bottom: 16px; border-bottom: 1px solid var(--line); }
@@ -723,8 +765,9 @@ export function Planning({
 
         @media (max-width: 760px) {
           .main-content { margin-left: 0; padding-bottom: 90px !important; }
-          .topbar { padding: 0 16px; }
+          .topbar { padding: 0 16px; height: 70px; }
           .content-wrap { padding-top: 20px; width: calc(100% - 32px); }
+          .planning-tabs { overflow-x: auto; }
           .header-add-btn { display: none !important; }
           
           .fab-form-panel { top: 70px; right: 16px; width: calc(100vw - 32px); }
@@ -770,9 +813,36 @@ export function Planning({
                 <div className="content-wrap">
                     <section className="planning-hero" style={{ animationDelay: '0.1s' }}>
                         <div>
-                            <p className="eyebrow">TEAM CAPACITEIT & PLANNING</p>
-                            <h1 style={{ fontFamily: 'var(--font-display)', fontSize: '24px', margin: '8px 0 8px', letterSpacing: '-0.02em' }}>De Slimme Agenda.</h1>
-                            <p style={{ fontSize: '13px', maxWidth: '500px', lineHeight: '1.5' }}>Een strak overzicht van alle taken. Koppel de agenda om dubbele boekingen te voorkomen en het team efficiënt aan te sturen.</p>
+                            <p className="eyebrow">PLANNING</p>
+                            <h1 style={{ fontFamily: 'var(--font-display)', fontSize: '26px', margin: '8px 0 10px', letterSpacing: '-0.02em' }}>
+                                {thisWeekCount === 0
+                                    ? "Deze week staat je agenda vrij."
+                                    : `${thisWeekCount} ${thisWeekCount === 1 ? "afspraak" : "afspraken"} deze week.`}
+                            </h1>
+                            <div className="planning-pulse">
+                                <span className="planning-pulse-item">
+                                    <span className="planning-pulse-dot scheduled" />
+                                    {scheduledCount} gepland
+                                </span>
+                                {unscheduledEvents.length > 0 && (
+                                    <span className="planning-pulse-item">
+                                        <span className="planning-pulse-dot open" />
+                                        {unscheduledEvents.length} in te plannen
+                                    </span>
+                                )}
+                                {missedCount > 0 && (
+                                    <span className="planning-pulse-item">
+                                        <span className="planning-pulse-dot missed" />
+                                        {missedCount} gemist
+                                    </span>
+                                )}
+                                {completedCount > 0 && (
+                                    <span className="planning-pulse-item">
+                                        <span className="planning-pulse-dot done" />
+                                        {completedCount} afgerond
+                                    </span>
+                                )}
+                            </div>
                         </div>
                         <div className="mail-status-wrap" style={{ alignSelf: 'center' }}>
                             {calendarConnected && (
@@ -798,7 +868,34 @@ export function Planning({
                         </div>
                     </section>
 
-                    {unscheduledEvents.length > 0 && query === "" && (
+                    <div className="planning-tabs" role="tablist" aria-label="Weergave">
+                        <button
+                            type="button"
+                            role="tab"
+                            aria-selected={planningView === "upcoming"}
+                            className={planningView === "upcoming" ? "selected" : ""}
+                            onClick={() => setPlanningView("upcoming")}
+                        >
+                            <CalendarDays size={15} />
+                            Aankomend
+                            <span className="planning-tab-count">{scheduledCount}</span>
+                        </button>
+                        <button
+                            type="button"
+                            role="tab"
+                            aria-selected={planningView === "past"}
+                            className={planningView === "past" ? "selected" : ""}
+                            onClick={() => setPlanningView("past")}
+                        >
+                            <Check size={15} />
+                            Afgerond &amp; gemist
+                            <span className="planning-tab-count">
+                                {completedCount + missedCount}
+                            </span>
+                        </button>
+                    </div>
+
+                    {planningView === "upcoming" && unscheduledEvents.length > 0 && query === "" && (
                         <div className="unscheduled-lane">
                             <div className="section-heading-row">
                                 <h2>Nog in te plannen</h2>
@@ -821,6 +918,8 @@ export function Planning({
                         </div>
                     )}
 
+                    {planningView === "upcoming" && (
+                    <>
                     <div className="section-heading-row" style={{ marginTop: '24px' }}>
                         <h2>Aankomende afspraken</h2>
                         <div className="filter-row" style={{ padding: 0, borderBottom: "none", marginBottom: "-8px" }}>
@@ -866,13 +965,24 @@ export function Planning({
                             ))
                         )}
                     </div>
+                    </>
+                    )}
 
-                    {/* Nieuwe sectie voor Geweeste/Gemiste afspraken */}
-                    {Object.keys(groupedPastEvents).length > 0 && (
-                        <div style={{ marginTop: '40px' }}>
+                    {planningView === "past" && (
+                        <div style={{ marginTop: '24px' }}>
                             <div className="section-heading-row">
-                                <h2>Afgeronde & Gemiste afspraken</h2>
+                                <h2>Afgerond &amp; gemist</h2>
+                                <span className="module-tag planning_assistant">
+                                    {completedCount} afgerond · {missedCount} gemist
+                                </span>
                             </div>
+                            {Object.keys(groupedPastEvents).length === 0 && (
+                                <div className="empty-state" style={{ borderRadius: '12px', border: '1px solid var(--line)', padding: '40px', marginTop: '20px' }}>
+                                    <Check size={28} />
+                                    <strong>Nog niets afgerond</strong>
+                                    <span>Zodra een afspraak voorbij is, verschijnt ze hier.</span>
+                                </div>
+                            )}
                             {Object.entries(groupedPastEvents).map(([date, dayEvents]) => (
                                 <div key={date} className="day-group">
                                     <div className="day-header">{date} <span className="event-count">{dayEvents.length}</span></div>

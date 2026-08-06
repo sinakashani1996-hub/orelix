@@ -19,8 +19,8 @@ test("build contains the finished Orelix Office product surface", async () => {
 
   assert.match(page, /<Dashboard/);
   assert.match(dashboard, /Goedemorgen/);
-  assert.match(dashboard, /Werk voor jou klaar/);
-  assert.match(dashboard, /Offerte Assistent/);
+  assert.match(dashboard, /Alles is bijgewerkt/);
+  assert.match(dashboard, /Offertes/);
   assert.match(dashboard, /Mail verbonden/);
   assert.match(dashboard, /Mail koppelen/);
   assert.match(dashboard, /Eigen e-mail \(IMAP\/SMTP\)/);
@@ -28,9 +28,9 @@ test("build contains the finished Orelix Office product surface", async () => {
   assert.match(dashboard, /VOORGESTELD ANTWOORD/);
   assert.match(dashboard, /<textarea/);
   assert.match(dashboard, /Wijzigingen opslaan/);
-  assert.match(dashboard, /Toewijzen aan/);
+  assert.match(dashboard, /Dossierdetails/);
   assert.match(dashboard, /Workspace niet geladen/);
-  assert.match(dashboard, /Nog niet gemeten/);
+  assert.match(dashboard, /Tijd bespaard/);
   assert.match(dashboard, /Openstaand/);
   assert.match(dashboard, /Verzonden/);
   assert.match(dashboard, /Archief/);

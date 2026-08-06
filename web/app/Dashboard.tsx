@@ -136,6 +136,22 @@ function receivedDateLabel(value: string) {
   }).format(new Date(value));
 }
 
+// Server en client rekenen allebei in Brusselse tijd, zodat de begroeting bij
+// het hydrateren niet omspringt.
+function greetingLabel() {
+  const hour = Number(
+    new Intl.DateTimeFormat("nl-BE", {
+      hour: "numeric",
+      hour12: false,
+      timeZone: "Europe/Brussels",
+    }).format(new Date()),
+  );
+  if (hour < 6) return "Goedenacht";
+  if (hour < 12) return "Goedemorgen";
+  if (hour < 18) return "Goedemiddag";
+  return "Goedenavond";
+}
+
 function currentDateLabel() {
   return new Intl.DateTimeFormat("nl-BE", {
     weekday: "long",
@@ -617,6 +633,16 @@ export function Dashboard({
   const quotesApprovalCount = quoteItems.filter(
       (item) => item.status === "needs_approval",
   ).length;
+  const waitingCount = inboxOpenCount + quotesOpenCount;
+  const overviewSubtitle = syncing
+      ? "Je werkplek wordt geladen…"
+      : waitingCount === 0
+          ? "Alles is afgehandeld. Er wacht niets op je."
+          : `${waitingCount} ${waitingCount === 1 ? "dossier wacht" : "dossiers wachten"} op je aandacht.`;
+  // Op het overzicht is een werkende mailbox geen nieuws; alleen wanneer er
+  // actie nodig is, verschijnt de statusknop daar nog.
+  const showMailStatus =
+      workspaceSection !== "overview" || !integration || gmailNeedsReconnect;
 
   async function updateStatus(id: string, status: "approved" | "dismissed") {
     const previous = items;
@@ -1124,31 +1150,57 @@ export function Dashboard({
         .metric-badge { font-size: 10px; font-weight: 700; color: #94a3b8; background: #f1f5f9; padding: 4px 8px; border-radius: 6px; }
 
         /* OVERZICHT: DE DRIE ASSISTENTEN */
-        .assistant-overview-heading { margin-bottom: 20px; }
-        .assistant-overview-heading h2 { font-family: var(--font-display); font-size: 22px; font-weight: 700; color: #111827; margin: 0; letter-spacing: -0.02em; }
-        .assistant-overview-heading p { font-size: 14px; color: #64748b; margin: 6px 0 0; font-weight: 500; }
         .assistant-card-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 24px; }
         .assistant-card {
-            display: grid; grid-template-columns: 52px 1fr auto auto; align-items: center;
-            gap: 18px; width: 100%; text-align: left; text-decoration: none;
-            background: #ffffff; border: 1px solid rgba(0,0,0,0.04); border-radius: 20px;
-            padding: 24px; cursor: pointer; font: inherit; color: inherit;
+            position: relative; overflow: hidden; isolation: isolate;
+            display: flex; flex-direction: column; gap: 22px;
+            width: 100%; text-align: left; text-decoration: none;
+            background: #ffffff; border: 1px solid rgba(0,0,0,0.04); border-radius: 24px;
+            padding: 28px; cursor: pointer; font: inherit; color: inherit;
             box-shadow: 0 10px 30px -10px rgba(0,0,0,0.03);
-            transition: transform 0.3s cubic-bezier(0.16, 1, 0.3, 1), box-shadow 0.3s ease, border-color 0.3s ease;
+            transition: transform 0.35s cubic-bezier(0.16, 1, 0.3, 1), box-shadow 0.35s ease, border-color 0.35s ease;
         }
-        .assistant-card:hover { transform: translateY(-4px); box-shadow: 0 20px 40px -12px rgba(16, 185, 129, 0.12); border-color: rgba(16, 185, 129, 0.2); }
-        .assistant-card-icon { width: 52px; height: 52px; border-radius: 15px; display: grid; place-items: center; }
-        .assistant-card-icon.inbox { background: #eff6ff; color: #3b82f6; }
-        .assistant-card-icon.quotes { background: #ecfdf5; color: #10b981; }
-        .assistant-card-icon.planning { background: #f3e8ff; color: #8b5cf6; }
-        .assistant-card-body { display: flex; flex-direction: column; gap: 4px; min-width: 0; }
-        .assistant-card-body strong { font-family: var(--font-display); font-size: 17px; font-weight: 700; color: #111827; letter-spacing: -0.01em; }
-        .assistant-card-body small { font-size: 12px; color: #64748b; font-weight: 500; line-height: 1.5; }
-        .assistant-card-meta { display: flex; flex-direction: column; align-items: flex-end; }
-        .assistant-card-value { font-family: var(--font-display); font-size: 26px; font-weight: 700; color: #111827; line-height: 1; }
-        .assistant-card-unit { font-size: 11px; color: #94a3b8; font-weight: 600; margin-top: 4px; white-space: nowrap; }
-        .assistant-card-arrow { color: #cbd5e1; transition: color 0.2s ease, transform 0.2s ease; }
-        .assistant-card:hover .assistant-card-arrow { color: var(--mint-deep); transform: translateX(3px); }
+        /* Zachte kleurgloed die bij hover oplicht, per assistent een eigen tint. */
+        .assistant-card::before {
+            content: ""; position: absolute; z-index: -1; top: -70px; right: -70px;
+            width: 190px; height: 190px; border-radius: 50%;
+            opacity: 0.5; transition: opacity 0.35s ease, transform 0.35s ease;
+        }
+        .assistant-card.inbox::before { background: radial-gradient(circle, rgba(59,130,246,0.16), transparent 70%); }
+        .assistant-card.quotes::before { background: radial-gradient(circle, rgba(16,185,129,0.16), transparent 70%); }
+        .assistant-card.planning::before { background: radial-gradient(circle, rgba(139,92,246,0.16), transparent 70%); }
+        .assistant-card:hover { transform: translateY(-6px); box-shadow: 0 26px 50px -16px rgba(15,23,42,0.16); border-color: rgba(16,185,129,0.18); }
+        .assistant-card:hover::before { opacity: 1; transform: scale(1.15); }
+
+        .assistant-card-head { display: flex; align-items: center; justify-content: space-between; }
+        .assistant-card-icon { width: 54px; height: 54px; border-radius: 17px; display: grid; place-items: center; }
+        .assistant-card.inbox .assistant-card-icon { background: #eff6ff; color: #3b82f6; }
+        .assistant-card.quotes .assistant-card-icon { background: #ecfdf5; color: #10b981; }
+        .assistant-card.planning .assistant-card-icon { background: #f3e8ff; color: #8b5cf6; }
+        .assistant-card-pill {
+            display: inline-flex; align-items: center; gap: 6px;
+            font-size: 10px; font-weight: 800; letter-spacing: 0.08em; text-transform: uppercase;
+            color: #10b981; background: #ecfdf5; padding: 5px 10px; border-radius: 999px;
+        }
+        .assistant-card-pill::before { content: ""; width: 6px; height: 6px; border-radius: 50%; background: currentColor; }
+
+        .assistant-card-body { display: flex; flex-direction: column; gap: 8px; }
+        .assistant-card-body strong { font-family: var(--font-display); font-size: 21px; font-weight: 700; color: #111827; letter-spacing: -0.02em; }
+        .assistant-card-body small { font-size: 13px; color: #64748b; font-weight: 500; line-height: 1.6; }
+
+        .assistant-card-foot {
+            display: flex; align-items: flex-end; justify-content: space-between;
+            gap: 12px; margin-top: auto; padding-top: 20px; border-top: 1px solid #f1f5f9;
+        }
+        .assistant-card-stat { display: flex; flex-direction: column; gap: 4px; min-width: 0; }
+        .assistant-card-value { font-family: var(--font-display); font-size: 30px; font-weight: 700; color: #111827; line-height: 1; }
+        .assistant-card-unit { font-size: 11px; color: #94a3b8; font-weight: 600; }
+        .assistant-card-go {
+            display: inline-flex; align-items: center; gap: 6px; white-space: nowrap;
+            font-size: 12px; font-weight: 750; color: #94a3b8;
+            transition: color 0.25s ease, gap 0.25s ease;
+        }
+        .assistant-card:hover .assistant-card-go { color: var(--mint-deep); gap: 10px; }
 
         /* INBOX & TABS CONTAINER */
         .pro-inbox-container {
@@ -1258,9 +1310,16 @@ export function Dashboard({
             <section className="pro-hero">
               <div>
                 <span className="pro-date">{currentDateLabel()}</span>
-                {/*<h1 className="pro-greeting">Goedemorgen, {displayName}.</h1>*/}
-                {/*<p className="pro-subtitle">Je digitale team heeft de administratie voorbereid.</p>*/}
+                {workspaceSection === "overview" && (
+                    <>
+                      <h1 className="pro-greeting">
+                        {greetingLabel()}, {displayName}.
+                      </h1>
+                      <p className="pro-subtitle">{overviewSubtitle}</p>
+                    </>
+                )}
               </div>
+              {showMailStatus && (
               <div className="mail-status-wrap">
                 {integration && !gmailNeedsReconnect && (
                     <button
@@ -1332,9 +1391,11 @@ export function Dashboard({
                   </div>
                 </div>
               </div>
+              )}
             </section>
 
             {/* PREMIUM METRIC CARDS */}
+            {workspaceSection !== "overview" && (
             <div className="pro-metric-grid">
               <article className="pro-metric-card">
                 <div className="metric-top">
@@ -1380,90 +1441,116 @@ export function Dashboard({
                 </div>
               </article>
             </div>
+            )}
 
             {workspaceSection === "overview" && (
                 <section className="assistant-overview" aria-label="Jouw assistenten">
-                  <div className="assistant-overview-heading">
-                    <h2>Jouw assistenten</h2>
-                    <p>Kies waar je verder wil werken.</p>
-                  </div>
-
                   <div className="assistant-card-grid">
                     <button
                         type="button"
-                        className="assistant-card"
+                        className="assistant-card inbox"
                         onClick={() => {
                           setWorkspaceSection("inbox");
                           setFilter("open");
                         }}
                     >
-                      <span className="assistant-card-icon inbox">
-                        <Inbox size={22} strokeWidth={2.4} />
+                      <span className="assistant-card-head">
+                        <span className="assistant-card-icon">
+                          <Inbox size={24} strokeWidth={2.3} />
+                        </span>
+                        <span className="assistant-card-pill">Actief</span>
                       </span>
                       <span className="assistant-card-body">
                         <strong>Inbox</strong>
                         <small>
-                          Alles wat binnenkomt, automatisch herkend en gelabeld.
+                          Elke binnenkomende mail wordt herkend, gelabeld en
+                          klaargezet met een voorstel.
                         </small>
                       </span>
-                      <span className="assistant-card-meta">
-                        <span className="assistant-card-value">
-                          {syncing ? "—" : inboxOpenCount}
+                      <span className="assistant-card-foot">
+                        <span className="assistant-card-stat">
+                          <span className="assistant-card-value">
+                            {syncing ? "—" : inboxOpenCount}
+                          </span>
+                          <span className="assistant-card-unit">
+                            {receivedToday > 0
+                                ? `openstaand · ${receivedToday} vandaag`
+                                : "openstaand"}
+                          </span>
                         </span>
-                        <span className="assistant-card-unit">openstaand</span>
+                        <span className="assistant-card-go">
+                          Openen <ArrowRight size={16} />
+                        </span>
                       </span>
-                      <ArrowRight size={17} className="assistant-card-arrow" />
                     </button>
 
                     <button
                         type="button"
-                        className="assistant-card"
+                        className="assistant-card quotes"
                         onClick={() => {
                           setWorkspaceSection("quotes");
                           setFilter("all_records");
                         }}
                     >
-                      <span className="assistant-card-icon quotes">
-                        <FileText size={22} strokeWidth={2.4} />
+                      <span className="assistant-card-head">
+                        <span className="assistant-card-icon">
+                          <FileText size={24} strokeWidth={2.3} />
+                        </span>
+                        <span className="assistant-card-pill">Actief</span>
                       </span>
                       <span className="assistant-card-body">
                         <strong>Offertes</strong>
                         <small>
-                          Van aanvraag tot ondertekening, in één dossier.
+                          Van eerste aanvraag tot ondertekening, alles in één
+                          dossier met eigen nummering.
                         </small>
                       </span>
-                      <span className="assistant-card-meta">
-                        <span className="assistant-card-value">
-                          {syncing ? "—" : quotesOpenCount}
+                      <span className="assistant-card-foot">
+                        <span className="assistant-card-stat">
+                          <span className="assistant-card-value">
+                            {syncing ? "—" : quotesOpenCount}
+                          </span>
+                          <span className="assistant-card-unit">
+                            {quotesApprovalCount > 0
+                                ? `openstaand · ${quotesApprovalCount} te keuren`
+                                : "openstaand"}
+                          </span>
                         </span>
-                        <span className="assistant-card-unit">
-                          {quotesApprovalCount > 0
-                              ? `${quotesApprovalCount} te keuren`
-                              : "openstaand"}
+                        <span className="assistant-card-go">
+                          Openen <ArrowRight size={16} />
                         </span>
                       </span>
-                      <ArrowRight size={17} className="assistant-card-arrow" />
                     </button>
 
-                    <a className="assistant-card" href="/planning">
-                      <span className="assistant-card-icon planning">
-                        <CalendarDays size={22} strokeWidth={2.4} />
+                    <a className="assistant-card planning" href="/planning">
+                      <span className="assistant-card-head">
+                        <span className="assistant-card-icon">
+                          <CalendarDays size={24} strokeWidth={2.3} />
+                        </span>
+                        <span className="assistant-card-pill">Actief</span>
                       </span>
                       <span className="assistant-card-body">
                         <strong>Planning</strong>
                         <small>
-                          Afspraken en plaatsingen, gekoppeld aan je agenda.
+                          Afspraken en plaatsingen, rechtstreeks gekoppeld aan
+                          je Google Agenda.
                         </small>
                       </span>
-                      <span className="assistant-card-meta">
-                        <span className="assistant-card-value">
-                          {upcomingEvents === null ? "—" : upcomingEvents}
+                      <span className="assistant-card-foot">
+                        <span className="assistant-card-stat">
+                          <span className="assistant-card-value">
+                            {upcomingEvents === null ? "—" : upcomingEvents}
+                          </span>
+                          <span className="assistant-card-unit">
+                            {upcomingEvents === null
+                                ? "agenda nog niet gekoppeld"
+                                : "afspraken gepland"}
+                          </span>
                         </span>
-                        <span className="assistant-card-unit">
-                          {upcomingEvents === null ? "geen agenda" : "gepland"}
+                        <span className="assistant-card-go">
+                          Openen <ArrowRight size={16} />
                         </span>
                       </span>
-                      <ArrowRight size={17} className="assistant-card-arrow" />
                     </a>
                   </div>
                 </section>

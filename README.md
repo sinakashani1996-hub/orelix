@@ -7,8 +7,9 @@ assistants.
 
 ## Start here
 
-Read [web/README.md](web/README.md) first. It explains the local setup and
-the small number of places you normally need to touch.
+Read [ONBOARDING.md](ONBOARDING.md) first. It explains what is live, how to run
+the app locally and the small number of places you normally need to touch.
+[web/README.md](web/README.md) covers the web application in more detail.
 
 ## Repository map
 
