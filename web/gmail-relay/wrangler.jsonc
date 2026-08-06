@@ -3,7 +3,6 @@
   "name": "orelix-gmail-relay",
   "main": "./worker.js",
   "compatibility_date": "2026-07-23",
-  "compatibility_flags": ["nodejs_compat"],
   "workers_dev": true,
   "ai": {
     "binding": "AI"

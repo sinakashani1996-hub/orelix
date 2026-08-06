@@ -1,39 +1,28 @@
 "use client";
 
+import { Navigation } from "@/components/Navigation";
 import {
     ArrowRight,
     Bell,
     Calendar,
     CalendarDays,
     CheckCircle2,
-    ChevronDown,
     ChevronRight,
-    CircleHelp,
-    FileText,
     RefreshCw,
-    Inbox,
-    LayoutDashboard,
-    LogOut,
     MapPin,
-    MessageSquareText,
-    MoreHorizontal,
     Phone,
     Mail,
     Plus,
-    Receipt,
     Search,
-    Settings,
-    Users,
     Wrench,
-    Zap,
     X,
     Save,
-    AlignLeft,
     Sparkles,
     Route,
     Clock,
     CarFront,
-    Check
+    Check,
+    Ban
 } from "lucide-react";
 import { useState, useRef, FormEvent, useMemo, useEffect } from "react";
 
@@ -43,7 +32,8 @@ const SUGGESTED_CITIES = [
     "Mechelen, België", "Oostende, België", "Roeselare, België", "Sint-Niklaas, België"
 ];
 
-type EventStatus = "scheduled" | "unscheduled";
+// 1. Extra statussen toegevoegd voor voltooid en gemist
+type EventStatus = "scheduled" | "unscheduled" | "completed" | "missed";
 
 type Event = {
     id: string;
@@ -61,7 +51,6 @@ type Event = {
     phone?: string;
     email?: string;
     notes?: string;
-    // Extra velden voor de ongeplande taken (Laag 1)
     originalRequest?: string;
     preferredDays?: string;
 };
@@ -76,7 +65,6 @@ type GoogleCalendarApiEvent = {
 };
 
 const initialMockEvents: Event[] = [
-    // --- ONGEPLANDE TAKEN (Inkomend uit Inbox/CRM) ---
     {
         id: "evt_unsched_1",
         status: "unscheduled",
@@ -86,7 +74,7 @@ const initialMockEvents: Event[] = [
         rawDate: "",
         startTime: "",
         endTime: "",
-        location: "Duffel, België", // Dichtbij Mechelen
+        location: "Duffel, België",
         assignee: "",
         type: "maintenance",
         week: "this_week",
@@ -113,8 +101,6 @@ const initialMockEvents: Event[] = [
         originalRequest: "Goedemiddag. Via jullie website had ik graag een offerte aangevraagd voor 14 panelen op onze nieuwbouw. Wanneer kan er iemand langskomen om het dak te bekijken? Wij zijn meestal thuis op vrijdagochtend.",
         preferredDays: "Vrijdagochtend"
     },
-
-    // --- GEPLANDE TAKEN (Agenda) ---
     {
         id: "evt_1",
         status: "scheduled",
@@ -172,17 +158,38 @@ function initials(name: string) {
     return name.split(" ").map((part) => part[0]).join("").slice(0, 2).toUpperCase();
 }
 
+// Hulpscript voor veel betere filtering
+function getDaysDifference(dateString: string): number {
+    if (!dateString) return 0;
+    const target = new Date(dateString);
+    if (isNaN(target.getTime())) return 0;
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    target.setHours(0, 0, 0, 0);
+    return Math.ceil((target.getTime() - today.getTime()) / (1000 * 3600 * 24));
+}
+
 function calendarEventToPlanningEvent(event: GoogleCalendarApiEvent): Event | null {
     const startValue = event.start?.dateTime || event.start?.date;
     if (!startValue) return null;
+
     const start = new Date(startValue);
     if (Number.isNaN(start.getTime())) return null;
+
+    const title = event.summary || "Afspraak uit Google Agenda";
+    const lowerTitle = title.toLowerCase();
+
+    if (lowerTitle.includes("offerte") || lowerTitle.includes("quote")) {
+        return null;
+    }
+
     const endValue = event.end?.dateTime || event.end?.date;
     const end = endValue ? new Date(endValue) : null;
+
     return {
         id: `google_${event.id}`,
         status: "scheduled",
-        title: event.summary || "Afspraak uit Google Agenda",
+        title: title,
         customerName: "Google Agenda",
         date: start.toLocaleDateString("nl-BE", { weekday: "long", day: "numeric", month: "long" }),
         rawDate: start.toISOString().slice(0, 10),
@@ -215,18 +222,14 @@ export function Planning({
     const [events, setEvents] = useState<Event[]>(initialMockEvents);
     const [toast, setToast] = useState("");
 
-    // UI States
     const [isFabOpen, setIsFabOpen] = useState(false);
     const [selectedEventId, setSelectedEventId] = useState<string | null>(null);
 
-    // AI Planning States
     const [isAiAnalyzing, setIsAiAnalyzing] = useState(false);
 
-    // FAB Drag State
     const [fabPos, setFabPos] = useState({ x: 0, y: 0 });
     const dragRef = useRef({ active: false, isDragging: false, startX: 0, startY: 0, initialX: 0, initialY: 0 });
 
-    // Formulier state (Voor handmatige bewerkingen)
     const [editingEventId, setEditingEventId] = useState<string | null>(null);
     const [newTitle, setNewTitle] = useState("");
     const [newCustomer, setNewCustomer] = useState("");
@@ -260,18 +263,25 @@ export function Planning({
         showToast(messages[status] || "De koppeling met Google Agenda is niet afgerond.");
     }, []);
 
-    // Wanneer een ongeplande taak wordt geopend, start de "AI Analyse" animatie
+    useEffect(() => {
+        const handleCustomToast = (e: any) => {
+            setToast(e.detail);
+            setTimeout(() => setToast(""), 4000);
+        };
+        window.addEventListener("show-toast", handleCustomToast);
+        return () => window.removeEventListener("show-toast", handleCustomToast);
+    }, []);
+
     useEffect(() => {
         if (selectedEvent?.status === 'unscheduled') {
             setIsAiAnalyzing(true);
             const timer = setTimeout(() => {
                 setIsAiAnalyzing(false);
-            }, 1800); // 1.8 seconden 'nadenken' voor het premium gevoel
+            }, 1800);
             return () => clearTimeout(timer);
         }
     }, [selectedEvent]);
 
-    // --- HARDWARE ACCELERATED POINTER EVENTS VOOR DE FAB ---
     const handlePointerDown = (e: React.PointerEvent<HTMLButtonElement>) => {
         e.currentTarget.setPointerCapture(e.pointerId);
         dragRef.current = { active: true, isDragging: false, startX: e.clientX, startY: e.clientY, initialX: fabPos.x, initialY: fabPos.y };
@@ -344,6 +354,17 @@ export function Planning({
         setShowCitySuggestions(false);
     }
 
+    // Markeer afspraak als voltooid of gemist
+    async function handleMarkStatus(id: string, newStatus: "completed" | "missed") {
+        setBusy(true);
+        // Simuleer korte backend-verwerkingstijd
+        await new Promise((resolve) => setTimeout(resolve, 500));
+        setEvents(current => current.map(evt => evt.id === id ? { ...evt, status: newStatus } : evt));
+        showToast(newStatus === "completed" ? "Afspraak succesvol afgerond!" : "Afspraak gemarkeerd als gemist.");
+        handleCloseDrawer();
+        setBusy(false);
+    }
+
     async function refreshCalendar(showFeedback = false) {
         setCalendarRefreshing(true);
         try {
@@ -360,9 +381,11 @@ export function Planning({
             };
             setCalendarConnected(Boolean(data.connected));
             setCalendarEmail(data.accountEmail || "");
+
             const calendarEvents = data.connected
                 ? (data.events || []).map(calendarEventToPlanningEvent).filter((event): event is Event => Boolean(event))
                 : [];
+
             setEvents((current) => [
                 ...current.filter((event) => !event.id.startsWith("google_")),
                 ...calendarEvents,
@@ -398,11 +421,10 @@ export function Planning({
         }
     }
 
-    // Accepteer het AI Voorstel
     async function handleAcceptAiProposal() {
         if (!selectedEvent) return;
         setBusy(true);
-        await new Promise((resolve) => setTimeout(resolve, 600)); // Simulatie opslaan
+        await new Promise((resolve) => setTimeout(resolve, 600));
 
         setEvents(events.map(evt => evt.id === selectedEvent.id ? {
             ...evt,
@@ -412,7 +434,7 @@ export function Planning({
             startTime: "13:00",
             endTime: "14:30",
             assignee: "Team A",
-            notes: evt.originalRequest // Verplaats originele request naar notities voor het team
+            notes: evt.originalRequest
         } : evt));
 
         showToast("Slim voorstel geaccepteerd en ingepland!");
@@ -472,9 +494,18 @@ export function Planning({
 
     const unscheduledEvents = useMemo(() => events.filter(e => e.status === "unscheduled"), [events]);
 
+    // De filter gebruikt nu echte datumvergelijking
     const groupedScheduledEvents = useMemo(() => {
         let filtered = events.filter(evt => evt.status === "scheduled" && (evt.title.toLowerCase().includes(query.toLowerCase()) || evt.customerName.toLowerCase().includes(query.toLowerCase())));
-        if (filterWeek !== "all") filtered = filtered.filter(evt => evt.week === filterWeek);
+
+        filtered = filtered.filter(evt => {
+            if (filterWeek === "all") return true;
+            const diffDays = getDaysDifference(evt.rawDate);
+            if (filterWeek === "this_week") return diffDays <= 7;
+            if (filterWeek === "next_week") return diffDays > 7 && diffDays <= 14;
+            return true;
+        });
+
         const groups: Record<string, Event[]> = {};
         filtered.forEach(evt => {
             if (!groups[evt.date]) groups[evt.date] = [];
@@ -483,6 +514,17 @@ export function Planning({
         Object.keys(groups).forEach(date => groups[date].sort((a, b) => a.startTime.localeCompare(b.startTime)));
         return groups;
     }, [events, query, filterWeek]);
+
+    // Groepeer ook de afgeronde en gemiste afspraken
+    const groupedPastEvents = useMemo(() => {
+        const filtered = events.filter(evt => (evt.status === "completed" || evt.status === "missed") && (evt.title.toLowerCase().includes(query.toLowerCase()) || evt.customerName.toLowerCase().includes(query.toLowerCase())));
+        const groups: Record<string, Event[]> = {};
+        filtered.forEach(evt => {
+            if (!groups[evt.date]) groups[evt.date] = [];
+            groups[evt.date].push(evt);
+        });
+        return groups;
+    }, [events, query]);
 
     return (
         <div className="app-shell">
@@ -499,6 +541,30 @@ export function Planning({
         /* LIJSTEN & HEADERS */
         .section-heading-row { display: flex; justify-content: space-between; align-items: flex-end; padding: 0 0 16px; margin-bottom: 16px; border-bottom: 1px solid var(--line); }
         .section-heading-row h2 { font-family: var(--font-display); font-size: 18px; color: var(--ink); margin:0; }
+        /* FILTER ROW STYLING */
+        .filter-row { 
+          display: flex; 
+          align-items: center; 
+          gap: 8px; /* Zorgt voor de ruimte tussen de knoppen */
+        }
+        .filter-row button { 
+          padding: 8px 14px; 
+          border: none; 
+          border-radius: 8px; 
+          background: transparent; 
+          color: var(--muted); 
+          font-size: 13px; 
+          font-weight: 600; 
+          cursor: pointer; 
+        }
+        .filter-row button:hover { 
+          color: var(--ink); 
+          background: var(--canvas); 
+        }
+        .filter-row button.selected { 
+          color: var(--mint-deep); 
+          background: rgba(16, 185, 129, 0.1); 
+        }
         
         .unscheduled-lane { margin-bottom: 40px; }
         .unscheduled-card { 
@@ -523,6 +589,15 @@ export function Planning({
         .structured-list { display: flex; flex-direction: column; gap: 8px; }
         .structured-event { display: grid; grid-template-columns: 100px minmax(220px, 1.5fr) 160px 130px 110px 24px; align-items: center; gap: 16px; background: var(--paper); border: 1px solid var(--line); border-radius: 10px; padding: 12px 20px; cursor: pointer; transition: background 0.2s, transform 0.2s cubic-bezier(0.16, 1, 0.3, 1); }
         .structured-event:hover { background: var(--canvas); border-color: var(--muted); }
+
+        /* COMPLETED & MISSED STYLING */
+        .structured-event.status-completed { background: rgba(16, 185, 129, 0.05); border-color: rgba(16, 185, 129, 0.3); }
+        .structured-event.status-completed .se-title { color: var(--mint-deep); text-decoration: line-through; opacity: 0.8; }
+        .structured-event.status-completed:hover { background: rgba(16, 185, 129, 0.1); }
+        
+        .structured-event.status-missed { background: rgba(239, 68, 68, 0.05); border-color: rgba(239, 68, 68, 0.3); }
+        .structured-event.status-missed .se-title { color: #ef4444; opacity: 0.9; }
+        .structured-event.status-missed:hover { background: rgba(239, 68, 68, 0.1); }
 
         .se-time { font-weight: 700; color: var(--ink); font-size: 13px; display: flex; align-items: center; gap: 6px; }
         .se-time small { color: var(--muted); font-weight: 500; font-size: 11px; }
@@ -567,14 +642,11 @@ export function Planning({
         .fab-form-panel input:focus, .fab-form-panel textarea:focus { border-color: var(--mint-deep) !important; box-shadow: 0 0 0 3px rgba(16, 185, 129, 0.1) !important;}
         .fab-form-panel .icon-button { background: var(--canvas) !important; border-color: var(--line) !important; color: var(--ink) !important; }
         
-        /* =========================================================
-           DE NIEUWE "3-LAYERS" AI DRAWER (GEÏNSPIREERD OP DASHBOARD)
-           ========================================================= */
-       
+        /* DRAWER */
         .detail-drawer { 
           background: var(--paper) !important; border-left: 1px solid var(--line); 
           width: min(800px, 100vw) !important; 
-          z-index: 105 !important; /* FIX: Zorgt dat de lade BOVEN de blur ligt */
+          z-index: 105 !important; 
         }
         .drawer-header h2 { color: var(--ink) !important; }
         .customer-strip { background: var(--canvas) !important; border-color: var(--line) !important; }
@@ -598,14 +670,11 @@ export function Planning({
         .message-pane-heading h3 { font-size: 16px; color: var(--ink); margin: 6px 0 0; }
         .drawer-label { font-size: 10px; font-weight: 700; color: var(--muted); letter-spacing: 0.05em; text-transform: uppercase; margin:0; }
 
-        /* Linker Paneel (Origineel) */
         .original-pane { background: var(--sidebar); }
         .original-message { font-family: var(--font-body); font-size: 13px; line-height: 1.6; color: var(--muted); white-space: pre-wrap; margin: 0; }
         
-        /* Rechter Paneel (AI Planner) */
         .ai-planner-pane { position: relative; }
         
-        /* AI Loading State */
         .ai-loading-overlay {
           position: absolute; inset: 0; background: var(--canvas);
           display: flex; flex-direction: column; align-items: center; justify-content: center;
@@ -623,7 +692,6 @@ export function Planning({
         .ai-loading-overlay p { color: var(--mint-deep); font-weight: 600; font-size: 13px; margin:0; animation: pulseText 1.5s infinite; }
         @keyframes pulseText { 50% { opacity: 0.5; } }
 
-        /* AI Resultaat (Het Voorstel) */
         .ai-proposal-card {
           background: var(--paper); border: 1px solid var(--mint-deep); border-radius: 12px;
           padding: 20px; box-shadow: 0 10px 30px rgba(16, 185, 129, 0.1);
@@ -643,10 +711,9 @@ export function Planning({
         .ai-slot-detail svg { color: var(--muted); }
 
         .drawer-actions { background: var(--paper) !important; border-top-color: var(--line) !important; padding: 24px; display: flex; gap: 12px; }
-        .secondary-button { flex: 1; padding: 12px; border-radius: 10px; font-weight: 600; font-size: 13px; background: var(--canvas); color: var(--ink); border: 1px solid var(--line); text-align: center; cursor: pointer; }
-        .approve-button { flex: 2; padding: 12px; border-radius: 10px; font-weight: 600; font-size: 13px; background: var(--mint-deep); color: white; border: none; text-align: center; cursor: pointer; display: flex; justify-content: center; gap: 8px; }
+        .secondary-button { flex: 1; padding: 12px; border-radius: 10px; font-weight: 600; font-size: 13px; background: var(--canvas); color: var(--ink); border: 1px solid var(--line); text-align: center; cursor: pointer; display: flex; align-items: center; justify-content: center; gap: 8px;}
+        .approve-button { flex: 2; padding: 12px; border-radius: 10px; font-weight: 600; font-size: 13px; background: var(--mint-deep); color: white; border: none; text-align: center; cursor: pointer; display: flex; justify-content: center; align-items: center; gap: 8px; }
 
-        .mobile-bottom-nav { display: none; }
         .header-add-btn { white-space: nowrap; }
 
         @media (max-width: 1024px) {
@@ -655,22 +722,15 @@ export function Planning({
         }
 
         @media (max-width: 760px) {
-          .sidebar { display: none !important; }
           .main-content { margin-left: 0; padding-bottom: 90px !important; }
           .topbar { padding: 0 16px; }
           .content-wrap { padding-top: 20px; width: calc(100% - 32px); }
           .header-add-btn { display: none !important; }
-
-          .mobile-bottom-nav { display: flex; position: fixed; bottom: 0; left: 0; right: 0; height: 70px; background: var(--paper); border-top: 1px solid var(--line); justify-content: space-around; align-items: center; z-index: 90; padding-bottom: env(safe-area-inset-bottom); }
-          .mobile-nav-item { display: flex; flex-direction: column; align-items: center; gap: 4px; color: var(--muted); text-decoration: none; font-size: 10px; font-weight: 600; flex: 1; }
-          .mobile-nav-item.active { color: var(--mint-deep); }
-          .mobile-nav-item.active svg { color: var(--mint-deep); fill: var(--mint); }
           
           .fab-form-panel { top: 70px; right: 16px; width: calc(100vw - 32px); }
 
-          /* Stack 3-layers pane on mobile */
           .message-comparison { grid-template-columns: 1fr; margin: 0 16px 16px; }
-          .detail-drawer { width: 100vw !important; }
+          .detail-drawer { width: 100vw !important; z-index: 105 !important; }
           .drawer-actions { padding: 16px; }
 
           .planning-hero { grid-template-columns: 1fr; padding: 20px; text-align: center; }
@@ -686,44 +746,13 @@ export function Planning({
         }
       `}</style>
 
-            {/* GEDEELDE ACHTERGROND BLUR VOOR ZOWEL FORMULIER ALS DETAILS POP-UP */}
-            <div className={`modal-overlay ${(isFabOpen || selectedEvent) ? 'is-active' : ''}`} onClick={() => { handleCloseForm(); handleCloseDrawer(); }} />
+            <Navigation
+                activePath="planning"
+                organizationName={organizationName}
+                userName={userName}
+            />
 
-            <aside className="sidebar">
-                <div className="brand">
-                    <span className="brand-mark">O</span>
-                    <span>Orelix <strong>Office</strong></span>
-                </div>
-                <div className="workspace-switcher">
-                    <span className="workspace-logo">{initials(organizationName)}</span>
-                    <span><strong>{organizationName}</strong><small>Hoofdworkspace</small></span>
-                    <ChevronDown size={15} />
-                </div>
-                <nav className="main-nav">
-                    <a href="/"><LayoutDashboard size={18} /> Overzicht</a>
-                    <a href="/#werk"><Zap size={18} /> Werk voor jou</a>
-                    <a href="/#dossiers"><MessageSquareText size={18} /> Dossiers</a>
-                    <a href="/#contacten"><Users size={18} /> Contacten</a>
-                </nav>
-                <p className="nav-kicker">ASSISTENTEN</p>
-                <nav className="assistant-nav">
-                    <a href="/"><Inbox size={17} /> Inbox</a>
-                    <a href="/?section=quotes"><FileText size={17} /> Offerte</a>
-                    <a className="assistant-active" href="/planning"><CalendarDays size={17} /> Planning</a>
-                    <a className="muted" href="/#factuur"><Receipt size={17} /> Factuur <small>Binnenkort</small></a>
-                    <a className="muted" href="/#crm"><Users size={17} /> CRM <small>Binnenkort</small></a>
-                </nav>
-                <div className="sidebar-bottom">
-                    <a href="/settings"><Settings size={17} /> Instellingen</a>
-                    <a href="/#help"><CircleHelp size={17} /> Help & feedback</a>
-                    <div className="profile">
-                        <span className="profile-avatar">{initials(userName)}</span>
-                        <span><strong>{userName}</strong><small>Administrator</small></span>
-                        <MoreHorizontal size={17} />
-                    </div>
-                    <a className="logout-link" href="/logout"><LogOut size={17} /> Uitloggen</a>
-                </div>
-            </aside>
+            <div className={`modal-overlay ${(isFabOpen || selectedEvent) ? 'is-active' : ''}`} onClick={() => { handleCloseForm(); handleCloseDrawer(); }} />
 
             <main className="main-content" id="planning">
                 <header className="topbar">
@@ -769,7 +798,6 @@ export function Planning({
                         </div>
                     </section>
 
-                    {/* LAAG 1 IN DE HOOFDVIEW: ONGEPLANDE TAKEN */}
                     {unscheduledEvents.length > 0 && query === "" && (
                         <div className="unscheduled-lane">
                             <div className="section-heading-row">
@@ -804,7 +832,7 @@ export function Planning({
 
                     <div>
                         {Object.keys(groupedScheduledEvents).length === 0 ? (
-                            <div className="empty-state" style={{ borderRadius: '12px', border: '1px solid var(--line)', padding: '40px' }}>
+                            <div className="empty-state" style={{ borderRadius: '12px', border: '1px solid var(--line)', padding: '40px', marginTop: '20px' }}>
                                 <CalendarDays size={28} />
                                 <strong>Geen afspraken gevonden</strong>
                                 <span>{filterWeek === "next_week" ? "Geen taken gepland voor volgende week." : "Probeer een andere weergave."}</span>
@@ -838,20 +866,55 @@ export function Planning({
                             ))
                         )}
                     </div>
+
+                    {/* Nieuwe sectie voor Geweeste/Gemiste afspraken */}
+                    {Object.keys(groupedPastEvents).length > 0 && (
+                        <div style={{ marginTop: '40px' }}>
+                            <div className="section-heading-row">
+                                <h2>Afgeronde & Gemiste afspraken</h2>
+                            </div>
+                            {Object.entries(groupedPastEvents).map(([date, dayEvents]) => (
+                                <div key={date} className="day-group">
+                                    <div className="day-header">{date} <span className="event-count">{dayEvents.length}</span></div>
+                                    <div className="structured-list">
+                                        {dayEvents.map((evt) => (
+                                            <div key={evt.id} className={`structured-event status-${evt.status}`} onClick={() => setSelectedEventId(evt.id)}>
+                                                <div className="se-time">{evt.startTime} <small>{evt.endTime}</small></div>
+                                                <div className="se-details">
+                                                    <span className="se-title">{evt.title}</span>
+                                                    <span className="se-customer">{evt.customerName}</span>
+                                                </div>
+                                                <div className="se-location"><MapPin size={13} /> {evt.location}</div>
+                                                <div className="desktop-only">
+                                                    {evt.status === "completed" ? (
+                                                        <span className="module-tag" style={{ background: '#d1fae5', color: '#065f46', padding: '4px 8px', fontSize: '10px' }}><Check size={12} style={{ display: 'inline', marginRight: '4px', marginTop: '-2px' }}/>Voltooid</span>
+                                                    ) : (
+                                                        <span className="module-tag" style={{ background: '#fee2e2', color: '#991b1b', padding: '4px 8px', fontSize: '10px' }}><Ban size={12} style={{ display: 'inline', marginRight: '4px', marginTop: '-2px' }}/>Gemist</span>
+                                                    )}
+                                                </div>
+                                                <div className="desktop-only"><span className="record-state record-state-sent" style={{ padding: '4px 8px', fontSize: '10px', background: 'var(--paper)', color: 'var(--muted)' }}>{evt.assignee}</span></div>
+                                                <div style={{ justifySelf: 'end' }}><ChevronRight size={18} color="var(--muted)" /></div>
+                                            </div>
+                                        ))}
+                                    </div>
+                                </div>
+                            ))}
+                        </div>
+                    )}
                 </div>
             </main>
 
-            {/* DE 3-LAYERS DRAWER (Voor zowel Ongeplande als Geplande items) */}
             {selectedEvent && (
                 <>
-                    <button className="drawer-backdrop" aria-label="Sluiten" onClick={handleCloseDrawer} />
                     <aside className="detail-drawer" aria-label="Afspraak details">
-
                         <div className="drawer-header">
                             <div>
-                <span className={`module-tag ${selectedEvent.type === 'installation' ? 'service_assistant' : 'quote_assistant'}`}>
-                  {selectedEvent.status === 'unscheduled' ? 'Nieuwe Aanvraag (Nog in te plannen)' : (selectedEvent.type === 'installation' ? 'Installatie' : selectedEvent.type === 'maintenance' ? 'Onderhoud' : 'Plaatsbezoek')}
-                </span>
+                                {selectedEvent.status === 'completed' && <span className="module-tag" style={{ background: '#d1fae5', color: '#065f46', marginBottom: '8px', display: 'inline-block' }}>Afspraak is afgerond</span>}
+                                {selectedEvent.status === 'missed' && <span className="module-tag" style={{ background: '#fee2e2', color: '#991b1b', marginBottom: '8px', display: 'inline-block' }}>Afspraak is gemist</span>}
+
+                                <span className={`module-tag ${selectedEvent.type === 'installation' ? 'service_assistant' : 'quote_assistant'}`} style={{ display: (selectedEvent.status === 'completed' || selectedEvent.status === 'missed') ? 'none' : 'inline-block' }}>
+                                    {selectedEvent.status === 'unscheduled' ? 'Nieuwe Aanvraag (Nog in te plannen)' : (selectedEvent.type === 'installation' ? 'Installatie' : selectedEvent.type === 'maintenance' ? 'Onderhoud' : 'Plaatsbezoek')}
+                                </span>
                                 <h2>{selectedEvent.title}</h2>
                             </div>
                             <button className="icon-button" onClick={handleCloseDrawer} aria-label="Sluiten"><X size={20} /></button>
@@ -869,12 +932,8 @@ export function Planning({
                             </div>
                         </div>
 
-                        {/* --- DE 3 LAGEN LOGICA (AI PLANNER VIEW VS NORMALE VIEW) --- */}
                         {selectedEvent.status === 'unscheduled' ? (
-
-                            // LAAG 2 & 3: AI PLANNER SPLIT VIEW
                             <div className="message-comparison">
-                                {/* Links: Originele Context (Klantverzoek) */}
                                 <section className="message-pane original-pane">
                                     <div className="message-pane-heading">
                                         <div>
@@ -884,14 +943,12 @@ export function Planning({
                                         <Mail size={18} color="var(--muted)" />
                                     </div>
                                     <pre className="original-message">{selectedEvent.originalRequest}</pre>
-
                                     <div style={{ marginTop: 'auto', paddingTop: '20px', borderTop: '1px solid rgba(255,255,255,0.05)' }}>
                                         <p className="drawer-label">GEWENSTE MOMENTEN</p>
                                         <p style={{ fontSize: '13px', color: 'var(--ink)', margin: '4px 0 0', fontWeight: 600 }}>{selectedEvent.preferredDays}</p>
                                     </div>
                                 </section>
 
-                                {/* Rechts: AI Planner & Voorstel */}
                                 <section className="message-pane ai-planner-pane">
                                     <div className="message-pane-heading">
                                         <div>
@@ -924,10 +981,7 @@ export function Planning({
                                     )}
                                 </section>
                             </div>
-
                         ) : (
-
-                            // NORMALE VIEW VOOR GEPLANDE TAKEN
                             <>
                                 <div className="drawer-section" style={{ padding: '0 24px 24px' }}>
                                     <p className="drawer-label">PLANNING & LOCATIE</p>
@@ -951,27 +1005,42 @@ export function Planning({
                                     </div>
                                 </div>
                             </>
-
                         )}
 
-                        {/* ACTIE KNOPPEN ONDERAAN */}
-                        <div className="drawer-actions">
-                            <button className="secondary-button" onClick={handleCloseDrawer}>Sluiten</button>
+                        <div className="drawer-actions" style={{ flexDirection: selectedEvent.status === 'scheduled' ? 'column' : 'row' }}>
+                            {selectedEvent.status === 'unscheduled' && (
+                                <>
+                                    <button className="secondary-button" onClick={handleCloseDrawer}>Sluiten</button>
+                                    <button className="approve-button" disabled={isAiAnalyzing || busy} onClick={handleAcceptAiProposal}>
+                                        {busy ? "Inplannen..." : (isAiAnalyzing ? "Analyseren..." : <><Check size={16} /> Voorstel Accepteren</>)}
+                                    </button>
+                                </>
+                            )}
 
-                            {selectedEvent.status === 'unscheduled' ? (
-                                <button className="approve-button" disabled={isAiAnalyzing || busy} onClick={handleAcceptAiProposal}>
-                                    {busy ? "Inplannen..." : (isAiAnalyzing ? "Analyseren..." : <><Check size={16} /> Voorstel Accepteren</>)}
-                                </button>
-                            ) : (
-                                <button className="approve-button" onClick={handleEditClick}><Wrench size={16} /> Afspraak wijzigen</button>
+                            {selectedEvent.status === 'scheduled' && (
+                                <>
+                                    <div style={{ display: 'flex', gap: '12px', width: '100%' }}>
+                                        <button className="approve-button" disabled={busy} onClick={() => handleMarkStatus(selectedEvent.id, "completed")} style={{ flex: 1 }}>
+                                            <Check size={16} /> Langs geweest
+                                        </button>
+                                        <button className="secondary-button" disabled={busy} onClick={() => handleMarkStatus(selectedEvent.id, "missed")} style={{ color: '#dc2626', borderColor: '#fca5a5', flex: 1 }}>
+                                            <Ban size={16} /> Gemist
+                                        </button>
+                                    </div>
+                                    <button className="secondary-button" onClick={handleEditClick} style={{ width: '100%' }}>
+                                        <Wrench size={16} /> Afspraak wijzigen
+                                    </button>
+                                </>
+                            )}
+
+                            {(selectedEvent.status === 'completed' || selectedEvent.status === 'missed') && (
+                                <button className="secondary-button" onClick={handleCloseDrawer} style={{ width: '100%' }}>Terug naar overzicht</button>
                             )}
                         </div>
-
                     </aside>
                 </>
             )}
 
-            {/* DRAGGABLE FAB KNOP MET REACT POINTER EVENTS */}
             <button
                 className={`draggable-fab ${isFabOpen ? 'hidden' : ''}`}
                 title="Nieuwe afspraak inplannen"
@@ -984,7 +1053,6 @@ export function Planning({
                 <Plus size={24} />
             </button>
 
-            {/* VASTE FORMULIER PANEL */}
             <div className={`fab-form-panel ${isFabOpen ? 'is-open' : ''}`} style={{ padding: '24px' }}>
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '24px' }}>
                     <div>
@@ -1042,14 +1110,6 @@ export function Planning({
             {toast && (
                 <div className="toast" role="status"><CheckCircle2 size={18} /> {toast}</div>
             )}
-
-            <nav className="mobile-bottom-nav">
-                <a href="/" className="mobile-nav-item"><LayoutDashboard size={22} /><span>Dashboard</span></a>
-                <a href="#inbox" className="mobile-nav-item" onClick={(e) => { e.preventDefault(); setToast("Inbox opent binnenkort"); }}><Inbox size={22} /><span>Inbox</span></a>
-                <a href="/planning" className="mobile-nav-item active"><CalendarDays size={22} /><span>Planning</span></a>
-                <a href="#crm" className="mobile-nav-item" onClick={(e) => { e.preventDefault(); setToast("CRM opent binnenkort"); }}><Users size={22} /><span>Klanten</span></a>
-                <a href="/settings" className="mobile-nav-item"><Settings size={22} /><span>Menu</span></a>
-            </nav>
         </div>
     );
 }

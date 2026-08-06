@@ -1,9 +1,10 @@
 {
   "$schema": "node_modules/wrangler/config-schema.json",
   "name": "site-creator-vinext-starter",
-  // nodejs_compat wordt door vite.config.ts toegevoegd; hier herhalen laat de
-  // Workers-runtime falen op "Compatibility flag specified multiple times".
-  // Hoogste datum die de meegeleverde workerd-binary lokaal aankan.
+  // compatibility_flags staat bewust niet hier: vite.config.ts levert
+  // nodejs_compat aan en herhalen laat de Workers-runtime falen op
+  // "Compatibility flag specified multiple times". De datum is de hoogste die
+  // de meegeleverde workerd-binary lokaal aankan.
   "compatibility_date": "2026-05-22",
   "main": "./worker/index.ts",
   "assets": {
